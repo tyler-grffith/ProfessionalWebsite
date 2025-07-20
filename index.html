@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tyler Griffith - Professional Portfolio</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-logo">
+                <a href="#home">
+                    <img src="Logo.png" alt="Logo" class="nav-logo-img">
+                    Tyler Griffith - Aerospace Engineer
+                </a>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-item">
+                    <a href="#home" class="nav-link">Home</a>
+                </li>
+                <li class="nav-item">
+                    <a href="#experience" class="nav-link">Projects</a>
+                </li>
+                <li class="nav-item">
+                    <a href="#modules" class="nav-link">Calculator Modules</a>
+                </li>
+                <li class="nav-item">
+                    <a href="Resume_CV_July_2025.pdf" target="_blank" class="nav-link">Resume</a>
+                </li>
+                <li class="nav-item">
+                    <a href="#contact" class="nav-link">Contact</a>
+                </li>
+            </ul>
+            <div class="hamburger">
+                <span class="bar"></span>
+                <span class="bar"></span>
+                <span class="bar"></span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section id="home" class="hero">
+        <div class="hero-container">
+            <div class="hero-content">
+                <h1 class="hero-title"> My <span class="highlight">Statement of Purpose</span></h1>
+                <p class="hero-subtitle">As an Aerospace Engineer</p>
+                <p class="hero-description">
+                    I am interested in substance, form, and movement. Reaction to stimuli. How do fundamental situations evolve and how to quantify the variations that real-world effects have on those platonic ideals? In constantly pursuing those curiosities, I aim to shed light on the boundaries of what our vehicles and physical machines can do. 
+                </p>
+                <p class="hero-description">
+                    My goal is to organize information. To consolidate what I have learned and will continue to learn into a referensible, interactable, and adaptive aerospace/physics focused calculator. A versatile UI that draws on the documented libraries of my notes, equations, and style to read my prompts, display the fully defined and the degrees of freedom of the situation, and create figures of the results to my specifications.
+                </p>
+                <p class="hero-description"></p>
+                    Think Wolfram Apha for gas dynamics, orbital mechanics, and thermodynamic situations. But with the advantage of ai to handle less rigid requirements on input and more control over the manifestation of output.
+                </p>
+                <p class="hero-description">
+                    I am thoroughly inspired by the power of Desmos (Graphing & Geometry), Wolfram Alpha, SolidWorks, and spreadsheets in general. My goal is to merge their functionalities to have a quick to use, accurate, and highly adjustable omni-calculator.
+                </p>
+                <div class="hero-buttons">
+                    <a href="#contact" class="btn btn-primary">Get In Touch</a>
+                    <a href="Resume_CV_July_2025.pdf" target="_blank" class="btn btn-secondary">View Resume</a>
+                </div>
+            </div>
+            <div class="hero-image">
+                <div class="hero-images-stack">
+                    <img src="PF Cylinder Streamlines.png" alt="PF Cylinder Streamlines" class="hero-stack-image">
+                    <img src="PF Cylinder.png" alt="PF Cylinder" class="hero-stack-image">
+                </div>
+            </div>
+        </div>
+    </section>
+
+
+    
+
+    <!-- Experience Section -->
+    <section id="experience" class="experience">
+        <div class="container">
+            <h2 class="section-title">Recent Projects</h2>
+            <div class="projects-grid">
+                <a href="Senior Project Final Presentation Tyler Griffith.pdf" target="_blank" class="project-card">
+                    <div class="project-image">
+                        <img src="senior project.jpg" alt="Flow Generation Project" style="width: 100%; height: 150%; object-fit: contain;">
+                    </div>
+                    <div class="project-content">
+                        <h3>Flow Generation & Control Prototypes For Use In Musical Instruments</h3>
+                        <h4>Senior Project, CWRU</h4>
+                        <p class="project-date">2024</p>
+                    </div>
+                    <div class="project-image-right">
+                        <img src="Senior Project Poster.png" alt="Senior Project Poster" style="width: 100%; height: 100%; object-fit: contain;">
+                    </div>
+                </a>
+                <a href="Team Alpha PDR.pdf" target="_blank" class="project-card">
+                    <div class="project-image">
+                        <img src="ntr engine.png" alt="Mission to Deimos Project" style="width: 100%; height: 100%; object-fit: contain;">
+                    </div>
+                    <div class="project-content">
+                        <h3>Design of Crewed Mission to Deimos</h3>
+                        <h4>14 Member Senior Design Team, CWRU</h4>
+                        <p class="project-date">2025</p>
+                        <p class="project-note">(My work is predominately summarized on slides 3-4, 12, and 57-60)</p>
+                    </div>
+                    <div class="project-image-right">
+                        <video autoplay muted loop playsinline style="width: 100%; height: 100%; object-fit: contain;">
+                            <source src="MissionScene.mp4" type="video/mp4">
+                            <img src="ntr performance.png" alt="NTR Performance" style="width: 100%; height: 100%; object-fit: contain;">
+                        </video>
+                    </div>
+                </a>
+            </div>
+        </div>
+    </section>
+
+<!-- calculator modules Section -->
+<section id="modules" class="modules">
+    <div class="container">
+        <h2 class="section-title">Calculator Modules</h2>
+        <div class="modules-grid">
+            <div class="module-category">
+                <h3>Spreadsheets</h3>
+                <div class="module-list">
+                    <a href="#" class="module-link">Compressible Flow</a>
+                    <a href="#" class="module-link">Ramjet</a>
+                    <a href="#" class="module-link">Turbojet</a>
+                    <a href="#" class="module-link">Inlets</a>
+                    <a href="#" class="module-link">Nozzles</a>
+                    <a href="#" class="module-link">Turbomachinery</a>
+                    <a href="#" class="module-link">Propulsion (Thrust)</a>
+                    <a href="#" class="module-link">Thermodynamic</a>
+                    <a href="#" class="module-link">Rocket</a>
+                    <a href="#" class="module-link">Hohmann Transfer</a>
+                </div>
+            </div>
+            <div class="module-category">
+                <h3>Desmos</h3>
+                <div class="module-list">
+                    <a href="#" class="module-link">Rayleigh Output</a>
+                    <a href="#" class="module-link">Elliptical Orbit w Burns</a>
+                    <a href="#" class="module-link">Kepler's Eqn</a>
+                    <a href="#" class="module-link">2nd Order Time Response</a>
+                    <a href="#" class="module-link">Song</a>
+                    <a href="#" class="module-link">Reactor Heat Transfer</a>
+                    <a href="#" class="module-link">2x Flow Over a Cylinder</a>
+                    <a href="#" class="module-link">Corner Flow</a>
+                    <a href="#" class="module-link">Double Slit Diffraction</a>
+                    <a href="#" class="module-link">Uncurved T-S</a>
+                    <a href="#" class="module-link">Fourier Expansion</a>
+                    <a href="#" class="module-link">Propeller Flight Envelope</a>
+                    <a href="#" class="module-link">Jet Flight Envelope</a>
+                    <a href="#" class="module-link">Time To Climb</a>
+                    <a href="#" class="module-link">Relativistic Energy & Momentum</a>
+                    <a href="#" class="module-link">Heat Eqn w End Condirions</a>
+                    <a href="#" class="module-link">ODE Slope Field</a>
+                    <a href="#" class="module-link">Convective HT</a>
+                    <a href="#" class="module-link">Finite Well</a>
+                </div>
+            </div>
+            <div class="module-category">
+                <h3>MatLab or Python</h3>
+                <div class="module-list">
+                    <a href="#" class="module-link">Flight Envelope</a>
+                    <a href="#" class="module-link">Gas Piping</a>
+                    <a href="#" class="module-link">Reactor Cool Down</a>
+                    <a href="#" class="module-link">Double Slit Fringe Pattern</a>
+                    <a href="#" class="module-link">Single Slit Diffraction</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+    <!-- Contact Section -->
+    <section id="contact" class="contact">
+        <div class="container">
+            <h2 class="section-title">Get In Touch</h2>
+            <div class="contact-content">
+                <div class="contact-info-left">
+                    <h3>Let's Connect!</h3>
+                    <p>
+                        I'm always interested in new opportunities and collaborations. 
+                        Feel free to reach out if you'd like to discuss potential projects, research opportunities, 
+                        or just want to connect about the math and physics of motion!
+                    </p>
+                </div>
+            </div>
+            <div class="contact-details-section">
+                <div class="contact-details">
+                    <div class="contact-item">
+                        <i class="fas fa-envelope"></i>
+                        <span>griffithtyler23@gmail.com</span>
+                    </div>
+                    <div class="contact-item">
+                        <i class="fas fa-phone"></i>
+                        <span>+1 (914) 602-8223</span>
+                    </div>
+                    <div class="contact-item location-item">
+                        <i class="fas fa-map-marker-alt"></i>
+                        <span>Fort Collins, CO</span>
+                    </div>
+                </div>
+                <div class="social-links">
+                    <a href="https://linkedin.com/in/tyler-griffith" target="_blank" class="social-link">
+                        <div class="social-icon"><i class="fab fa-linkedin"></i></div>
+                        <span class="social-text">linkedin.com/in/tyler-griffith</span>
+                    </a>
+                    <a href="#" class="social-link">
+                        <div class="social-icon"><i class="fab fa-discord"></i></div>
+                        <span class="social-text">paocifista</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2024 Tyler Griffith. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        // Mobile menu toggle
+        const hamburger = document.querySelector(".hamburger");
+        const navMenu = document.querySelector(".nav-menu");
+
+        hamburger.addEventListener("click", () => {
+            hamburger.classList.toggle("active");
+            navMenu.classList.toggle("active");
+        });
+
+        // Close mobile menu when clicking on a link
+        document.querySelectorAll(".nav-link").forEach(n => n.addEventListener("click", () => {
+            hamburger.classList.remove("active");
+            navMenu.classList.remove("active");
+        }));
+
+        // Smooth scrolling for navigation links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                document.querySelector(this.getAttribute('href')).scrollIntoView({
+                    behavior: 'smooth'
+                });
+            });
+        });
+    </script>
+</body>
+</html> 
