@@ -369,10 +369,20 @@ section {
 /* Modules Section */
 .modules-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    grid-template-columns: 1fr 1fr 1fr 1fr;
     gap: 2rem;
     max-width: 1200px;
     margin: 0 auto;
+}
+
+.desmos-category {
+    grid-column: 2 / span 2;
+}
+
+.desmos-category .module-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.5rem;
 }
 
 .module-category h3 {
