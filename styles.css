@@ -260,21 +260,6 @@ iframe {
     border: 1px solid #ccc;
 }
 
-.hero-stack-image {
-    width: 100%;
-    height: auto;
-    max-width: none;
-    min-width: 0;
-    border-radius: 8px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-    transition: transform 0.3s ease;
-}
-
-.hero-stack-image:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
-}
-
 /* Section Styles */
 section {
     padding: clamp(3rem, 8vw, 5rem) 0;
@@ -302,100 +287,6 @@ section {
     border-radius: 2px;
 }
 
-/* About Section */
-.about {
-    background: #d9d9d9;
-}
-
-.about-content {
-    max-width: 800px;
-    margin: 0 auto;
-}
-
-.about-text p {
-    font-size: 1.1rem;
-    margin-bottom: 1.5rem;
-    color: #274e13;
-    line-height: 1.8;
-}
-
-.about-stats {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
-    gap: 2rem;
-    margin-top: 3rem;
-}
-
-.stat {
-    text-align: center;
-    padding: 2rem;
-    background: #d9d9d9;
-    border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(39, 78, 19, 0.1);
-    transition: transform 0.3s ease;
-}
-
-.stat:hover {
-    transform: translateY(-5px);
-}
-
-.stat h3 {
-    font-size: 2.5rem;
-    font-weight: 700;
-    color: #274e13;
-    margin-bottom: 0.5rem;
-}
-
-.stat p {
-    color: #660000;
-    font-weight: 500;
-}
-
-/* Skills Section */
-.skills-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
-    gap: clamp(1.5rem, 4vw, 3rem);
-}
-
-.skill-category h3 {
-    font-size: 1.5rem;
-    font-weight: 600;
-    margin-bottom: 2rem;
-    color: #274e13;
-}
-
-.skill-items {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-}
-
-.skill-item {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-.skill-name {
-    font-weight: 500;
-    color: #274e13;
-}
-
-.skill-bar {
-    height: 8px;
-    background: #d9d9d9;
-    border-radius: 4px;
-    overflow: hidden;
-}
-
-.skill-progress {
-    height: 100%;
-    background: linear-gradient(135deg, #660000 0%, #274e13 100%);
-    border-radius: 4px;
-    transition: width 1s ease;
-}
-
 /* Modules Section */
 .modules-grid {
     display: grid;
@@ -407,8 +298,7 @@ section {
 @media (min-width: 1040px) {
     .desmos-category {
         grid-column: 2 / span 2;
-    }
-}
+    }}
 
 .desmos-category .module-list {
     display: grid;
@@ -583,12 +473,6 @@ section {
     border-left: 8px solid transparent;
     border-right: 8px solid transparent;
     border-bottom: 8px solid #e5ac77;
-}
-
-.project-description {
-    color: #274e13;
-    line-height: 1.6;
-    font-size: 1rem;
 }
 
 /* Contact Section */
@@ -785,14 +669,6 @@ section {
         padding-right: 0;
     }
 
-    .contact-image-container {
-        padding-left: 0;
-    }
-
-    .contact-image {
-        height: 250px;
-    }
-
     .contact-details-section {
         max-width: 100%;
         padding: 0 1rem;
@@ -807,10 +683,6 @@ section {
         font-size: 0.9rem;
         justify-content: center;
     }
-
-    .about-stats {
-        grid-template-columns: 1fr;
-    }
 }
 
 @media (max-width: 480px) {
@@ -823,8 +695,7 @@ section {
         width: 100%;
         max-width: 250px;
         text-align: center;
-    }
-}
+    }}
 
 /* Animations */
 @keyframes fadeInUp {
@@ -839,9 +710,6 @@ section {
 }
 
 .hero-content,
-.about-content,
-.skills-grid,
-.timeline-item,
 .contact-content {
     animation: fadeInUp 0.8s ease-out;
 }
@@ -850,8 +718,6 @@ section {
 .nav-link,
 .btn,
 .social-link,
-.stat,
-.timeline-content,
 .contact-item {
     transition: all 0.3s ease;
 }
@@ -859,9 +725,7 @@ section {
 /* Focus states for accessibility */
 .btn:focus,
 .nav-link:focus,
-.social-link:focus,
-.form-group input:focus,
-.form-group textarea:focus {
+.social-link:focus {
     outline: 2px solid #274e13;
     outline-offset: 2px;
-} 
+}
