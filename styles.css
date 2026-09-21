@@ -8,6 +8,10 @@
     /* 55ch renders ~67 characters in EB Garamond, since 1ch is the width of
        "0" and real text averages narrower. Measured, not assumed. */
     --measure: 55ch;
+    /* The fixed navbar runs 60px tall on a phone but 104px between roughly
+       800 and 1050px, where the menu wraps to a second line. Anything
+       scrolled to by an anchor has to clear the tallest case it can meet. */
+    --nav-clearance: clamp(80px, 12vw, 110px);
 }
 
 * {
@@ -138,6 +142,7 @@ iframe {
 /* Hero Section */
 .hero {
     min-height: 100vh;
+    min-height: 100svh;
     display: flex;
     align-items: center;
     background: linear-gradient(135deg, #660000 0%, #274e13 100%);
@@ -270,24 +275,10 @@ iframe {
     box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
 }
 
-.profile-placeholder {
-    width: 100%;
-    height: 100%;
-    min-height: 80vh;
-    background: rgba(217, 217, 217, 0.1);
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 5rem;
-    color: rgba(217, 217, 217, 0.3);
-    border: 3px solid rgba(217, 217, 217, 0.2);
-    overflow: hidden;
-}
-
 /* Section Styles */
 section {
     padding: clamp(3rem, 8vw, 5rem) 0;
+    scroll-margin-top: var(--nav-clearance);
 }
 
 .section-title {
@@ -766,12 +757,6 @@ section {
         min-width: 0;
         gap: 0.75rem;
         margin-left: 0;
-    }
-
-    .profile-placeholder {
-        width: 200px;
-        height: 200px;
-        font-size: 3rem;
     }
 
     .project-card {
