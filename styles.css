@@ -1,4 +1,15 @@
 /* Reset and Base Styles */
+:root {
+    /* How wide the page furniture may get. Prose is capped separately by
+       --measure, because a readable line length is a much smaller number
+       than a comfortable layout width. */
+    --page-max: 1600px;
+    --gutter: clamp(1rem, 3vw, 2rem);
+    /* 55ch renders ~67 characters in EB Garamond, since 1ch is the width of
+       "0" and real text averages narrower. Measured, not assumed. */
+    --measure: 55ch;
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -26,9 +37,9 @@ iframe {
 }
 
 .container {
-    max-width: 1200px;
+    max-width: var(--page-max);
     margin: 0 auto;
-    padding: 0 20px;
+    padding: 0 var(--gutter);
 }
 
 /* Navigation */
@@ -44,9 +55,9 @@ iframe {
 }
 
 .nav-container {
-    max-width: 1200px;
+    max-width: var(--page-max);
     margin: 0 auto;
-    padding: 0 20px;
+    padding: 0 var(--gutter);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -135,13 +146,19 @@ iframe {
 }
 
 .hero-container {
-    max-width: 1200px;
+    max-width: var(--page-max);
     margin: 0 auto;
-    padding: 0 20px;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 21rem), 1fr));
+    padding: 0 var(--gutter);
+    display: flex;
+    flex-wrap: wrap;
     gap: clamp(2rem, 5vw, 4rem);
     align-items: center;
+}
+
+.hero-content,
+.hero-image {
+    flex: 1 1 21rem;
+    min-width: 0;
 }
 
 .hero-title {
@@ -163,6 +180,7 @@ iframe {
 }
 
 .hero-description {
+    max-width: var(--measure);
     font-size: 1.1rem;
     margin-bottom: 2rem;
     opacity: 0.8;
@@ -225,6 +243,10 @@ iframe {
     gap: 1rem;
     width: 100%;
     min-width: 0;
+}
+
+.hero-images-stack img {
+    width: 100%;
 }
 
 .hero-embed {
@@ -388,7 +410,6 @@ section {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
     gap: clamp(1.25rem, 3vw, 2rem);
-    max-width: 1200px;
     margin: 0 auto;
 }
 
@@ -461,7 +482,6 @@ section {
     display: flex;
     flex-direction: column;
     gap: clamp(1.25rem, 3vw, 2rem);
-    max-width: 1400px;
     margin: 0 auto;
 }
 
