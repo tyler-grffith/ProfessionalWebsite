@@ -1,0 +1,3 @@
+[submodule "JungaWorkspace"]
+	path = JungaWorkspace
+	url = https://github.com/tyler-grffith/JungaWorkspace.git
