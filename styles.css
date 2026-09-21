@@ -80,7 +80,7 @@ iframe {
 .nav-menu {
     display: flex;
     list-style: none;
-    gap: 2rem;
+    gap: clamp(0.75rem, 1.8vw, 2rem);
 }
 
 .nav-link {
@@ -140,12 +140,12 @@ iframe {
     padding: 0 20px;
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 21rem), 1fr));
-    gap: 4rem;
+    gap: clamp(2rem, 5vw, 4rem);
     align-items: center;
 }
 
 .hero-title {
-    font-size: 3.5rem;
+    font-size: clamp(2rem, 5.5vw, 3.5rem);
     font-weight: 700;
     margin-bottom: 1rem;
     line-height: 1.2;
@@ -156,7 +156,7 @@ iframe {
 }
 
 .hero-subtitle {
-    font-size: 1.5rem;
+    font-size: clamp(1.2rem, 2.2vw, 1.5rem);
     font-weight: 500;
     margin-bottom: 1.5rem;
     opacity: 0.9;
@@ -265,14 +265,14 @@ iframe {
 
 /* Section Styles */
 section {
-    padding: 80px 0;
+    padding: clamp(3rem, 8vw, 5rem) 0;
 }
 
 .section-title {
     text-align: center;
-    font-size: 2.5rem;
+    font-size: clamp(1.8rem, 4vw, 2.5rem);
     font-weight: 700;
-    margin-bottom: 3rem;
+    margin-bottom: clamp(1.5rem, 4vw, 3rem);
     color: #274e13;
     position: relative;
 }
@@ -342,7 +342,7 @@ section {
 .skills-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
-    gap: 3rem;
+    gap: clamp(1.5rem, 4vw, 3rem);
 }
 
 .skill-category h3 {
@@ -387,7 +387,7 @@ section {
 .modules-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
-    gap: 2rem;
+    gap: clamp(1.25rem, 3vw, 2rem);
     max-width: 1200px;
     margin: 0 auto;
 }
@@ -460,7 +460,7 @@ section {
 .projects-grid {
     display: flex;
     flex-direction: column;
-    gap: 2rem;
+    gap: clamp(1.25rem, 3vw, 2rem);
     max-width: 1400px;
     margin: 0 auto;
 }
@@ -518,7 +518,7 @@ section {
 }
 
 .project-content {
-    padding: 2rem;
+    padding: clamp(1rem, 3vw, 2rem);
     flex: 1 0 22rem;
     min-width: 0;
     display: flex;
@@ -739,7 +739,6 @@ section {
 
     .hero-container {
         text-align: center;
-        gap: 2rem;
     }
 
     .hero-images-stack {
@@ -749,22 +748,10 @@ section {
         margin-left: 0;
     }
 
-    .hero-title {
-        font-size: 2.5rem;
-    }
-
-    .hero-subtitle {
-        font-size: 1.2rem;
-    }
-
     .profile-placeholder {
         width: 200px;
         height: 200px;
         font-size: 3rem;
-    }
-
-    .section-title {
-        font-size: 2rem;
     }
 
     .project-card {
@@ -780,7 +767,6 @@ section {
 
     .project-content {
         flex: 0 0 auto;
-        padding: 1rem;
     }
 
     .contact-content {
@@ -823,10 +809,6 @@ section {
 }
 
 @media (max-width: 480px) {
-    .hero-title {
-        font-size: 2rem;
-    }
-
     .hero-buttons {
         flex-direction: column;
         align-items: center;
@@ -836,14 +818,6 @@ section {
         width: 100%;
         max-width: 250px;
         text-align: center;
-    }
-
-    .section-title {
-        font-size: 1.8rem;
-    }
-
-    .project-content {
-        padding: 1.5rem;
     }
 }
 
