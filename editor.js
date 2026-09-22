@@ -1,4 +1,4 @@
-/* Developer mode: in-place editing of text and links.
+/* Developer mode: in-place editing of text, links and images.
  *
  * Loaded only for ?edit=1. Nothing here runs for ordinary visitors.
  *
@@ -9,8 +9,8 @@
  * indices line up; a saved draft additionally records the value it expected to
  * find, and is refused if the file has moved on underneath it.
  *
- * Phase 2 of the editor: text, links, undo/redo, drafts.
- * Images, layout tokens and publishing arrive in later phases.
+ * Phases 2-3 of the editor: text, links, images, undo/redo, drafts.
+ * Layout tokens and publishing arrive in later phases.
  */
 (function () {
     'use strict';
@@ -37,12 +37,26 @@
         { name: 'contact.item',  sel: '.contact-item span',    text: true },
         { name: 'social',        sel: '.social-link',          href: true },
         { name: 'social.text',   sel: '.social-text',          text: true },
-        { name: 'footer',        sel: '.footer p',             text: true }
+        { name: 'footer',        sel: '.footer p',             text: true },
+
+        /* Images. Direct children only, which deliberately excludes the <img>
+           fallback nested inside the Deimos card's <video>. */
+        { name: 'logo.image',     sel: '.nav-logo-img',             image: true },
+        { name: 'hero.image',     sel: '.hero-images-stack a > img', image: true },
+        { name: 'project.image',  sel: '.project-image > img',      image: true },
+        { name: 'project.image2', sel: '.project-image-right > img', image: true }
     ];
 
     var DRAFT_KEY = 'tge.draft.' + location.pathname;
     var DRAFT_VERSION = 2;
     var COMMIT_DELAY = 500;
+
+    /* The widest an image is ever displayed is about 736 CSS px, so 1600
+       device px still covers a 2x screen with room to spare. */
+    var MAX_EDGE = 1600;
+    var JPEG_QUALITY = 0.82;
+    var DB_NAME = 'tge-images';
+    var DB_STORE = 'blobs';
 
     /* ----------------------------------------------------------------- state */
 
@@ -51,6 +65,9 @@
     var cursor = -1;           // index of the last applied op
     var pending = null;        // { key, before, timer } while typing
     var activeLink = null;     // record currently shown in the link bar
+    var activeImage = null;    // record currently shown in the image bar
+    var images = new Map();    // id -> { blob, name, width, height, bytes, wasBytes }
+    var blobUrls = new Map();  // id -> object URL, revoked when dropped
     var ui = {};
 
     /* ------------------------------------------------------------- utilities */
@@ -81,14 +98,45 @@
         return cur;
     }
 
+    function bytes(n) {
+        if (n < 1024) return n + ' B';
+        if (n < 1024 * 1024) return (n / 1024).toFixed(0) + ' KB';
+        return (n / 1048576).toFixed(1) + ' MB';
+    }
+
+    /* An image record's value is the id of a staged replacement, or '' for
+       "still the file on disk". The <img> src cannot be the value, because
+       while previewing it holds a blob: URL that means nothing to the repo. */
     function getValue(rec) {
         if (rec.kind === 'text') return norm(rec.host.textContent);
+        if (rec.kind === 'image') return rec.value || '';
         return rec.el.getAttribute(rec.kind) || '';
     }
 
     function setValue(rec, value) {
-        if (rec.kind === 'text') rec.host.textContent = value;
-        else rec.el.setAttribute(rec.kind, value);
+        if (rec.kind === 'text') {
+            rec.host.textContent = value;
+        } else if (rec.kind === 'image') {
+            rec.value = value;
+            var meta = value && images.get(value);
+            if (meta) {
+                rec.el.setAttribute('src', blobUrls.get(value));
+                /* width/height attributes are an aspect-ratio hint used before
+                   the image loads. Left stale they cause a layout jump. */
+                if (rec.hasDims) {
+                    rec.el.setAttribute('width', meta.width);
+                    rec.el.setAttribute('height', meta.height);
+                }
+            } else {
+                rec.el.setAttribute('src', rec.originalSrc);
+                if (rec.hasDims) {
+                    rec.el.setAttribute('width', rec.originalW);
+                    rec.el.setAttribute('height', rec.originalH);
+                }
+            }
+        } else {
+            rec.el.setAttribute(rec.kind, value);
+        }
         rec.el.toggleAttribute('data-tge-dirty', value !== rec.original);
     }
 
@@ -112,13 +160,14 @@
                 if (el.closest('.tge-bar, .tge-drawer')) return;
                 if (region.text) add(region.name + '[' + i + ']', el, 'text');
                 if (region.href) add(region.name + '[' + i + ']@href', el, 'href');
+                if (region.image) add(region.name + '[' + i + ']@image', el, 'image');
             });
         });
     }
 
     function add(key, el, kind) {
         var rec = { key: key, el: el, kind: kind, host: kind === 'text' ? textHost(el) : el };
-        rec.original = getValue(rec);
+        rec.original = kind === 'image' ? '' : getValue(rec);
         records.set(key, rec);
 
         if (kind === 'text') {
@@ -131,6 +180,14 @@
             } catch (e) {
                 rec.host.contentEditable = 'true';
             }
+        } else if (kind === 'image') {
+            rec.originalSrc = el.getAttribute('src') || '';
+            rec.hasDims = el.hasAttribute('width') && el.hasAttribute('height');
+            rec.originalW = el.getAttribute('width');
+            rec.originalH = el.getAttribute('height');
+            rec.value = '';
+            rec.original = '';
+            el.setAttribute('data-tge-imageable', '');
         } else {
             el.setAttribute('data-tge-linkable', '');
         }
@@ -138,11 +195,22 @@
 
     /* --------------------------------------------------------------- history */
 
+    /* One undo step is one field's worth of editing, not one typing pause.
+       Committing on a 500ms debounce alone produced 23 separate ops for a
+       single edit to the logo, so consecutive ops on the same key are merged
+       into the one already at the top of the stack. An edit that ends up back
+       where it started removes itself entirely. */
     function record(key, before, after) {
         if (before === after) return;
         history.length = cursor + 1;      // drop any redo tail
-        history.push({ key: key, before: before, after: after });
-        cursor = history.length - 1;
+        var top = history[cursor];
+        if (top && top.key === key) {
+            top.after = after;
+            if (top.before === top.after) { history.length = cursor; cursor--; }
+        } else {
+            history.push({ key: key, before: before, after: after });
+            cursor = history.length - 1;
+        }
         sync();
     }
 
@@ -190,7 +258,9 @@
         });
         history.length = 0;
         cursor = -1;
+        dropAllBlobs();
         closeLinkBar();
+        closeImageBar();
         saveDraft();
         sync();
         toast('All changes discarded.');
@@ -282,6 +352,130 @@
         closeLinkBar();
     }
 
+    /* ---------------------------------------------------------- image blobs */
+
+    /* Blobs go in IndexedDB, not localStorage: a photo is megabytes, the
+       localStorage quota is a few, and stringifying one into every draft save
+       would stall the page on each keystroke. */
+    function openDb() {
+        return new Promise(function (resolve, reject) {
+            var req = indexedDB.open(DB_NAME, 1);
+            req.onupgradeneeded = function () { req.result.createObjectStore(DB_STORE); };
+            req.onsuccess = function () { resolve(req.result); };
+            req.onerror = function () { reject(req.error); };
+        });
+    }
+
+    function dbTx(mode, fn) {
+        return openDb().then(function (db) {
+            return new Promise(function (resolve, reject) {
+                var tx = db.transaction(DB_STORE, mode);
+                var out = fn(tx.objectStore(DB_STORE));
+                tx.oncomplete = function () { resolve(out && out.result); };
+                tx.onerror = function () { reject(tx.error); };
+            });
+        });
+    }
+
+    function dbPut(id, value) { return dbTx('readwrite', function (st) { return st.put(value, id); }); }
+    function dbGetAll() { return dbTx('readonly', function (st) { return st.getAll(); }); }
+    function dbGetKeys() { return dbTx('readonly', function (st) { return st.getAllKeys(); }); }
+    function dbClear() { return dbTx('readwrite', function (st) { return st.clear(); }); }
+
+    function stageBlob(id, meta) {
+        images.set(id, meta);
+        blobUrls.set(id, URL.createObjectURL(meta.blob));
+    }
+
+    function dropAllBlobs() {
+        blobUrls.forEach(function (url) { URL.revokeObjectURL(url); });
+        blobUrls.clear();
+        images.clear();
+        dbClear().catch(function () {});
+    }
+
+    /* Downscale and re-encode, but never make things worse: if the source is
+       already small enough and re-encoding would not shrink it, keep the
+       original bytes. PNG stays PNG so transparency is not flattened to
+       black, and SVG is passed through untouched. */
+    function processImage(file) {
+        if (file.type === 'image/svg+xml') {
+            return Promise.resolve({ blob: file, width: 0, height: 0, note: 'SVG passed through' });
+        }
+        return createImageBitmap(file).then(function (bmp) {
+            var scale = Math.min(1, MAX_EDGE / Math.max(bmp.width, bmp.height));
+            var w = Math.round(bmp.width * scale);
+            var h = Math.round(bmp.height * scale);
+            var canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            canvas.getContext('2d').drawImage(bmp, 0, 0, w, h);
+            bmp.close && bmp.close();
+            var type = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+            return new Promise(function (resolve) {
+                canvas.toBlob(function (blob) {
+                    if (!blob || (scale === 1 && blob.size >= file.size)) {
+                        resolve({ blob: file, width: bmp.width, height: bmp.height,
+                                  note: 'kept original bytes, re-encoding gained nothing' });
+                    } else {
+                        resolve({ blob: blob, width: w, height: h,
+                                  note: scale < 1 ? 'downscaled to ' + w + 'x' + h : 're-encoded' });
+                    }
+                }, type, JPEG_QUALITY);
+            });
+        });
+    }
+
+    function replaceImage(rec, file) {
+        return processImage(file).then(function (out) {
+            var id = 'img' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+            var meta = {
+                blob: out.blob, name: file.name, width: out.width, height: out.height,
+                bytes: out.blob.size, wasBytes: file.size, target: rec.originalSrc, note: out.note
+            };
+            stageBlob(id, meta);
+            return dbPut(id, meta).catch(function () {}).then(function () {
+                var before = getValue(rec);
+                setValue(rec, id);
+                record(rec.key, before, id);
+                saveDraft();
+                showImageBar(rec);
+                toast(file.name + ' \u2192 ' + rec.originalSrc + '  (' + bytes(meta.wasBytes) +
+                      ' \u2192 ' + bytes(meta.bytes) + ', ' + out.note + ')', 7000);
+            });
+        }).catch(function (err) {
+            toast('Could not read that image: ' + err.message, 6000);
+        });
+    }
+
+    function showImageBar(rec) {
+        activeImage = rec;
+        ui.imagebar.hidden = false;
+        ui.imageLabel.textContent = rec.originalSrc;
+        var id = getValue(rec);
+        var meta = id && images.get(id);
+        ui.imageInfo.textContent = meta
+            ? 'staged: ' + meta.name + '  ' + bytes(meta.wasBytes) + ' \u2192 ' + bytes(meta.bytes) +
+              (meta.width ? '  (' + meta.width + '\u00d7' + meta.height + ')' : '')
+            : 'unchanged';
+        ui.imagebar.querySelector('[data-act="revertimage"]').disabled = !meta;
+    }
+
+    function closeImageBar() {
+        activeImage = null;
+        ui.imagebar.hidden = true;
+    }
+
+    function revertImage() {
+        if (!activeImage) return;
+        var before = getValue(activeImage);
+        if (!before) return;
+        setValue(activeImage, '');
+        record(activeImage.key, before, '');
+        saveDraft();
+        showImageBar(activeImage);
+    }
+
     /* ------------------------------------------------------------- draft I/O */
 
     var draftTimer = null;
@@ -305,17 +499,26 @@
                 cursor: cursor,
                 originals: originals
             }));
+            /* The blobs themselves already live in IndexedDB; drop any whose
+               id no longer appears in history so they do not accumulate. */
+            var live = {};
+            history.forEach(function (op) { live[op.after] = true; live[op.before] = true; });
+            dbGetKeys().then(function (keys) {
+                (keys || []).forEach(function (id) {
+                    if (!live[id]) dbTx('readwrite', function (st) { return st.delete(id); }).catch(function () {});
+                });
+            }).catch(function () {});
         } catch (e) { /* private mode, quota - drafting is a convenience */ }
     }
 
     function loadDraft() {
         var raw;
-        try { raw = localStorage.getItem(DRAFT_KEY); } catch (e) { return; }
-        if (!raw) return;
+        try { raw = localStorage.getItem(DRAFT_KEY); } catch (e) { return Promise.resolve(); }
+        if (!raw) return Promise.resolve();
 
         var draft;
-        try { draft = JSON.parse(raw); } catch (e) { return; }
-        if (!draft || draft.v !== DRAFT_VERSION || !Array.isArray(draft.ops) || !draft.ops.length) return;
+        try { draft = JSON.parse(raw); } catch (e) { return Promise.resolve(); }
+        if (!draft || draft.v !== DRAFT_VERSION || !Array.isArray(draft.ops) || !draft.ops.length) return Promise.resolve();
 
         /* If the page has changed since the draft was written, the indices in
            these keys may no longer point at the same content. Refuse rather
@@ -328,8 +531,19 @@
             try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
             toast('A saved draft was discarded: the page changed underneath it (' +
                   stale.length + ' of ' + Object.keys(draft.originals).length + ' fields no longer match).', 9000);
-            return;
+            dropAllBlobs();
+            return Promise.resolve();
         }
+
+        return dbGetAll().catch(function () { return []; }).then(function (metas) {
+            return dbGetKeys().catch(function () { return []; }).then(function (ids) {
+                (ids || []).forEach(function (id, i) { if (metas[i]) stageBlob(id, metas[i]); });
+                return applyDraft(draft);
+            });
+        });
+    }
+
+    function applyDraft(draft) {
 
         history = draft.ops;
         cursor = typeof draft.cursor === 'number' ? draft.cursor : history.length - 1;
@@ -338,8 +552,10 @@
             if (rec) setValue(rec, history[i].after);
         }
         var age = Math.round((Date.now() - draft.savedAt) / 60000);
-        toast('Restored ' + changes().length + ' unsaved change' + (changes().length === 1 ? '' : 's') +
+        var n = changes().length;
+        toast('Restored ' + n + ' unsaved change' + (n === 1 ? '' : 's') +
               ' from ' + (age < 1 ? 'less than a minute' : age + ' minute' + (age === 1 ? '' : 's')) + ' ago.', 6000);
+        return Promise.resolve();
     }
 
     /* ------------------------------------------------------------------- UI */
@@ -357,6 +573,13 @@
               '<input class="tge-input" data-role="linkinput" spellcheck="false">' +
               '<button class="tge-btn" data-act="applylink">Apply</button>' +
               '<button class="tge-btn" data-act="cancellink">Cancel</button>' +
+            '</span>' +
+            '<span class="tge-imagebar" hidden>' +
+              '<label data-role="imagelabel"></label>' +
+              '<button class="tge-btn" data-act="pickimage">Choose image\u2026</button>' +
+              '<button class="tge-btn" data-act="revertimage">Revert</button>' +
+              '<span class="tge-imageinfo" data-role="imageinfo"></span>' +
+              '<button class="tge-btn" data-act="closeimage">Close</button>' +
             '</span>' +
             '<span class="tge-spacer"></span>' +
             '<button class="tge-btn" data-act="toggle">Review changes</button>' +
@@ -381,6 +604,20 @@
         ui.linkbar = bar.querySelector('.tge-linkbar');
         ui.linkLabel = bar.querySelector('[data-role="linklabel"]');
         ui.linkInput = bar.querySelector('[data-role="linkinput"]');
+        ui.imagebar = bar.querySelector('.tge-imagebar');
+        ui.imageLabel = bar.querySelector('[data-role="imagelabel"]');
+        ui.imageInfo = bar.querySelector('[data-role="imageinfo"]');
+
+        ui.file = document.createElement('input');
+        ui.file.type = 'file';
+        ui.file.accept = 'image/*';
+        ui.file.hidden = true;
+        document.body.appendChild(ui.file);
+        ui.file.addEventListener('change', function () {
+            var file = ui.file.files && ui.file.files[0];
+            ui.file.value = '';
+            if (file && activeImage) replaceImage(activeImage, file);
+        });
 
         bar.addEventListener('click', function (e) {
             var act = e.target.getAttribute && e.target.getAttribute('data-act');
@@ -391,6 +628,9 @@
             else if (act === 'discard') { if (changes().length && confirm('Discard all pending changes?')) discardAll(); }
             else if (act === 'applylink') applyLink();
             else if (act === 'cancellink') closeLinkBar();
+            else if (act === 'pickimage') ui.file.click();
+            else if (act === 'revertimage') revertImage();
+            else if (act === 'closeimage') closeImageBar();
             else if (act === 'publish') {
                 toast('Publishing arrives in a later phase. Your changes are saved locally and survive a reload.', 6000);
             }
@@ -410,12 +650,23 @@
             return;
         }
         ui.list.innerHTML = list.map(function (c) {
+            var vals;
+            if (c.rec.kind === 'image') {
+                var meta = images.get(c.after);
+                vals = meta
+                    ? '<span class="tge-was">' + escapeHtml(c.rec.originalSrc) + '</span>' +
+                      '<span class="tge-now">replaced with ' + escapeHtml(meta.name) + ' \u2014 ' +
+                      bytes(meta.wasBytes) + ' \u2192 ' + bytes(meta.bytes) +
+                      (meta.width ? ', ' + meta.width + '\u00d7' + meta.height : '') + '</span>' +
+                      '<img class="tge-thumb" src="' + blobUrls.get(c.after) + '" alt="">'
+                    : '<span class="tge-now">reverted to ' + escapeHtml(c.rec.originalSrc) + '</span>';
+            } else {
+                vals = '<span class="tge-was">' + escapeHtml(c.before || '(empty)') + '</span>' +
+                       '<span class="tge-now">' + escapeHtml(c.after || '(empty)') + '</span>';
+            }
             return '<div class="tge-change">' +
                 '<div class="tge-change-key">' + escapeHtml(c.rec.key) + '</div>' +
-                '<div class="tge-change-vals">' +
-                    '<span class="tge-was">' + escapeHtml(c.before || '(empty)') + '</span>' +
-                    '<span class="tge-now">' + escapeHtml(c.after || '(empty)') + '</span>' +
-                '</div></div>';
+                '<div class="tge-change-vals">' + vals + '</div></div>';
         }).join('');
     }
 
@@ -440,6 +691,15 @@
 
         var editable = e.target.closest('[data-tge-editable]');
         if (editable) editable.focus();
+
+        var imageable = e.target.closest('[data-tge-imageable]');
+        if (imageable) {
+            var imgKey = null;
+            records.forEach(function (rec) { if (rec.kind === 'image' && rec.el === imageable) imgKey = rec.key; });
+            if (imgKey) showImageBar(records.get(imgKey));
+        } else if (!editable) {
+            closeImageBar();
+        }
 
         var linkable = e.target.closest('[data-tge-linkable]');
         if (linkable) {
@@ -477,7 +737,10 @@
             if (changes().length) { e.preventDefault(); e.returnValue = ''; }
         });
 
-        loadDraft();
+        Promise.resolve(loadDraft()).catch(function () {}).then(function () {
+            sync();
+            window.__tgeReady = true;
+        });
         sync();
 
         console.info('[dev mode] ' + records.size + ' editable fields across ' + REGIONS.length + ' regions.');
