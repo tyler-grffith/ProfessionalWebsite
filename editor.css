@@ -1,0 +1,256 @@
+/* Developer mode UI. Loaded only when the page is opened with ?edit=1, so
+   ordinary visitors never download or run any of this. Everything here is
+   namespaced .tge- so it cannot collide with the site's own styles. */
+
+:root {
+    --tge-bg: #16281a;
+    --tge-fg: #eef2ea;
+    --tge-accent: #e5ac77;
+    --tge-danger: #8c2f2f;
+    --tge-muted: #9fb09f;
+}
+
+/* --- editable affordances ------------------------------------------------ */
+
+body.tge-on [data-tge-editable] {
+    outline: 1px dashed rgba(229, 172, 119, 0.55);
+    outline-offset: 3px;
+    cursor: text;
+    border-radius: 2px;
+    transition: outline-color 0.15s ease, background-color 0.15s ease;
+}
+
+body.tge-on [data-tge-editable]:hover {
+    outline-color: var(--tge-accent);
+    background-color: rgba(229, 172, 119, 0.12);
+}
+
+body.tge-on [data-tge-editable]:focus {
+    outline: 2px solid var(--tge-accent);
+    background-color: rgba(229, 172, 119, 0.18);
+}
+
+body.tge-on [data-tge-dirty] {
+    outline-style: solid;
+    outline-color: var(--tge-accent);
+}
+
+body.tge-on [data-tge-linkable] {
+    cursor: pointer;
+}
+
+/* Keep the toolbar clear of the page's own fixed navbar and content. */
+body.tge-on {
+    padding-bottom: 5.5rem;
+}
+
+/* --- toolbar ------------------------------------------------------------- */
+
+.tge-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2147483000;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem clamp(0.6rem, 2vw, 1rem);
+    background: var(--tge-bg);
+    color: var(--tge-fg);
+    font: 500 14px/1.4 ui-sans-serif, system-ui, sans-serif;
+    box-shadow: 0 -2px 18px rgba(0, 0, 0, 0.35);
+}
+
+.tge-bar * {
+    font: inherit;
+}
+
+.tge-title {
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--tge-accent);
+    margin-right: 0.25rem;
+}
+
+.tge-spacer {
+    flex: 1 1 auto;
+}
+
+.tge-btn {
+    appearance: none;
+    border: 1px solid rgba(238, 242, 234, 0.25);
+    background: transparent;
+    color: var(--tge-fg);
+    padding: 0.4rem 0.7rem;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.tge-btn:hover:not(:disabled) {
+    background: rgba(238, 242, 234, 0.12);
+    border-color: rgba(238, 242, 234, 0.5);
+}
+
+.tge-btn:disabled {
+    opacity: 0.38;
+    cursor: default;
+}
+
+.tge-btn-primary {
+    background: var(--tge-accent);
+    border-color: var(--tge-accent);
+    color: #2a1a0c;
+    font-weight: 700;
+}
+
+.tge-btn-primary:hover:not(:disabled) {
+    background: #f0bd8d;
+    border-color: #f0bd8d;
+}
+
+.tge-btn-danger:hover:not(:disabled) {
+    background: var(--tge-danger);
+    border-color: var(--tge-danger);
+}
+
+.tge-count {
+    color: var(--tge-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+/* --- changes drawer ------------------------------------------------------ */
+
+.tge-drawer {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 3.2rem;
+    max-height: min(52vh, 480px);
+    overflow-y: auto;
+    z-index: 2147482999;
+    background: #0f1c12;
+    color: var(--tge-fg);
+    border-top: 2px solid var(--tge-accent);
+    padding: 0.75rem clamp(0.6rem, 2vw, 1rem) 1rem;
+    font: 400 13px/1.5 ui-sans-serif, system-ui, sans-serif;
+}
+
+.tge-drawer h2 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--tge-muted);
+    margin: 0 0 0.6rem;
+}
+
+.tge-change {
+    display: grid;
+    grid-template-columns: minmax(8rem, 14rem) 1fr;
+    gap: 0.25rem 1rem;
+    padding: 0.5rem 0;
+    border-top: 1px solid rgba(238, 242, 234, 0.12);
+}
+
+.tge-change-key {
+    color: var(--tge-accent);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    word-break: break-all;
+}
+
+.tge-change-vals {
+    min-width: 0;
+}
+
+.tge-was,
+.tge-now {
+    display: block;
+    word-break: break-word;
+}
+
+.tge-was {
+    color: #d79a9a;
+    text-decoration: line-through;
+    opacity: 0.8;
+}
+
+.tge-now {
+    color: #a8d7a8;
+}
+
+.tge-empty {
+    color: var(--tge-muted);
+    font-style: italic;
+}
+
+/* --- link editor popover ------------------------------------------------- */
+
+/* A class rule with display:flex outranks the UA's [hidden]{display:none},
+   so the hidden state has to be restated. */
+.tge-linkbar[hidden] {
+    display: none;
+}
+
+.tge-linkbar {
+    display: flex;
+    flex: 1 1 22rem;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+}
+
+.tge-linkbar label {
+    color: var(--tge-muted);
+    white-space: nowrap;
+}
+
+.tge-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: #0b150d;
+    border: 1px solid rgba(238, 242, 234, 0.3);
+    color: var(--tge-fg);
+    border-radius: 6px;
+    padding: 0.35rem 0.5rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+}
+
+.tge-input:focus {
+    outline: 2px solid var(--tge-accent);
+    outline-offset: -1px;
+}
+
+/* --- toast --------------------------------------------------------------- */
+
+.tge-toast {
+    position: fixed;
+    bottom: 4.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2147483001;
+    background: var(--tge-bg);
+    color: var(--tge-fg);
+    border: 1px solid var(--tge-accent);
+    border-radius: 8px;
+    padding: 0.6rem 1rem;
+    font: 500 13px/1.4 ui-sans-serif, system-ui, sans-serif;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    max-width: min(90vw, 34rem);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .tge-toast {
+        animation: tge-rise 0.18s ease-out;
+    }
+
+    @keyframes tge-rise {
+        from {
+            opacity: 0;
+            transform: translate(-50%, 8px);
+        }
+    }
+}

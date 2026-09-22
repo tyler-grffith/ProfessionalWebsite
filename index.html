@@ -15,7 +15,7 @@
             <div class="nav-logo">
                 <a href="#home">
                     <img src="Logo.png" alt="Logo" class="nav-logo-img">
-                    Tyler Griffith - Aerospace Engineer
+                    <span class="nav-logo-text">Tyler Griffith - Aerospace Engineer</span>
                 </a>
             </div>
             <ul class="nav-menu">
@@ -262,6 +262,17 @@
             hamburger.classList.remove("active");
             navMenu.classList.remove("active");
         }));
+
+        // Developer mode: only ever loaded on demand, never for visitors.
+        if (new URLSearchParams(location.search).has('edit')) {
+            const css = document.createElement('link');
+            css.rel = 'stylesheet';
+            css.href = 'editor.css';
+            document.head.appendChild(css);
+            const js = document.createElement('script');
+            js.src = 'editor.js';
+            document.body.appendChild(js);
+        }
 
         // Smooth scrolling for navigation links
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
