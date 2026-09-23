@@ -47,6 +47,15 @@
         { name: 'project.image2', sel: '.project-image-right > img', image: true }
     ];
 
+    /* Layout knobs. These are the custom properties styles.css is written
+       against, so a change here is the same lever the stylesheet already
+       pulls - not an override fighting it. */
+    var TOKENS = [
+        { prop: '--page-max',    label: 'Page width',    min: 1000, max: 2400, step: 20,   unit: 'px' },
+        { prop: '--measure',     label: 'Text measure',  min: 38,   max: 85,   step: 1,    unit: 'ch' },
+        { prop: '--space-scale', label: 'Spacing scale', min: 0.6,  max: 1.6,  step: 0.05, unit: ''   }
+    ];
+
     var DRAFT_KEY = 'tge.draft.' + location.pathname;
     var DRAFT_VERSION = 2;
     var COMMIT_DELAY = 500;
@@ -109,11 +118,18 @@
        while previewing it holds a blob: URL that means nothing to the repo. */
     function getValue(rec) {
         if (rec.kind === 'text') return norm(rec.host.textContent);
-        if (rec.kind === 'image') return rec.value || '';
+        if (rec.kind === 'image' || rec.kind === 'token') return rec.value || '';
         return rec.el.getAttribute(rec.kind) || '';
     }
 
     function setValue(rec, value) {
+        if (rec.kind === 'token') {
+            rec.value = value;
+            if (value === rec.original) rec.el.style.removeProperty(rec.prop);
+            else rec.el.style.setProperty(rec.prop, value);
+            if (ui.panel && !ui.panel.hidden) syncPanel();
+            return;
+        }
         if (rec.kind === 'text') {
             rec.host.textContent = value;
         } else if (rec.kind === 'image') {
@@ -152,6 +168,18 @@
     }
 
     /* ------------------------------------------------------------- collection */
+
+    function collectTokens() {
+        var root = document.documentElement;
+        var cs = getComputedStyle(root);
+        TOKENS.forEach(function (tok) {
+            var key = 'layout[' + tok.prop + ']';
+            var rec = { key: key, kind: 'token', prop: tok.prop, spec: tok, el: root };
+            rec.original = cs.getPropertyValue(tok.prop).trim();
+            rec.value = rec.original;
+            records.set(key, rec);
+        });
+    }
 
     function collect() {
         REGIONS.forEach(function (region) {
@@ -476,6 +504,126 @@
         showImageBar(activeImage);
     }
 
+    /* ---------------------------------------------------------- layout panel */
+
+    /* How many characters of real prose fit at a given width. --measure is in
+       ch, the width of "0", which in this serif is noticeably wider than the
+       average letter - so the ch number alone tells you very little. */
+    var measureProbe = null;
+    function charsAtWidth(px) {
+        var sample = document.querySelector('.hero-description');
+        if (!sample) return null;
+        if (!measureProbe) {
+            measureProbe = document.createElement('span');
+            measureProbe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;left:-9999px;top:0';
+            document.body.appendChild(measureProbe);
+        }
+        measureProbe.style.font = getComputedStyle(sample).font;
+        var text = norm(sample.textContent);
+        if (!text) return null;
+        var lo = 1, hi = text.length;
+        while (lo < hi) {
+            var mid = (lo + hi + 1) >> 1;
+            measureProbe.textContent = text.slice(0, mid);
+            if (measureProbe.getBoundingClientRect().width <= px) lo = mid; else hi = mid - 1;
+        }
+        return lo;
+    }
+
+    /* 1ch is the advance width of "0" in the current font. */
+    function chToPx(n) {
+        var sample = document.querySelector('.hero-description');
+        if (!sample || !measureProbe) charsAtWidth(1);
+        if (!measureProbe) return n * 8;
+        measureProbe.style.font = getComputedStyle(sample).font;
+        measureProbe.textContent = new Array(Math.max(1, Math.round(n)) + 1).join('0');
+        return measureProbe.getBoundingClientRect().width;
+    }
+
+    function buildPanel() {
+        var panel = document.createElement('div');
+        panel.className = 'tge-panel';
+        panel.hidden = true;
+        panel.innerHTML = '<h2>Layout</h2>' + TOKENS.map(function (tok) {
+            var key = 'layout[' + tok.prop + ']';
+            return '<div class="tge-row">' +
+                '<label for="tge-' + tok.prop + '">' + escapeHtml(tok.label) + '</label>' +
+                '<input id="tge-' + tok.prop + '" type="range" data-token="' + key + '" ' +
+                    'min="' + tok.min + '" max="' + tok.max + '" step="' + tok.step + '">' +
+                '<output data-out="' + key + '"></output>' +
+                '<button class="tge-btn tge-btn-sm" data-reset="' + key + '">Reset</button>' +
+                '</div>';
+        }).join('') + '<p class="tge-note" data-role="panelnote"></p>';
+        document.body.appendChild(panel);
+        ui.panel = panel;
+
+        var interacting = null;
+        panel.addEventListener('input', function (e) {
+            var key = e.target.getAttribute('data-token');
+            if (!key) return;
+            var rec = records.get(key);
+            /* Remember where the drag started so the whole drag is one op,
+               rather than one op per pixel of travel. */
+            if (!interacting || interacting.key !== key) interacting = { key: key, before: getValue(rec) };
+            setValue(rec, e.target.value + rec.spec.unit);
+            syncPanel();
+        });
+        panel.addEventListener('change', function (e) {
+            var key = e.target.getAttribute('data-token');
+            if (!key || !interacting) return;
+            var rec = records.get(key);
+            record(key, interacting.before, getValue(rec));
+            interacting = null;
+            saveDraft();
+        });
+        panel.addEventListener('click', function (e) {
+            var key = e.target.getAttribute('data-reset');
+            if (!key) return;
+            var rec = records.get(key);
+            var before = getValue(rec);
+            if (before === rec.original) return;
+            setValue(rec, rec.original);
+            record(key, before, rec.original);
+            saveDraft();
+            syncPanel();
+        });
+    }
+
+    function syncPanel() {
+        if (!ui.panel) return;
+        TOKENS.forEach(function (tok) {
+            var key = 'layout[' + tok.prop + ']';
+            var rec = records.get(key);
+            var num = parseFloat(getValue(rec));
+            var slider = ui.panel.querySelector('[data-token="' + key + '"]');
+            var out = ui.panel.querySelector('[data-out="' + key + '"]');
+            if (slider && document.activeElement !== slider) slider.value = num;
+            if (out) {
+                var shown = tok.unit === '' ? num.toFixed(2) + '\u00d7' : Math.round(num) + tok.unit;
+                if (tok.prop === '--measure') {
+                    /* Report the cap the slider actually sets, not the
+                       paragraph's current width - on a narrow window the
+                       column is the binding constraint and the cap is idle. */
+                    var capPx = chToPx(num);
+                    var chars = charsAtWidth(capPx);
+                    if (chars) shown += '  \u2248 ' + chars + ' characters';
+                    var el = document.querySelector('.hero-description');
+                    if (el && el.getBoundingClientRect().width < capPx - 1) {
+                        shown += '  (column is narrower here)';
+                    }
+                }
+                out.textContent = shown;
+                out.classList.toggle('tge-changed', getValue(rec) !== rec.original);
+            }
+        });
+        var note = ui.panel.querySelector('[data-role="panelnote"]');
+        if (note) {
+            note.textContent = 'Comfortable line length is 45\u201375 characters. ' +
+                'Spacing scale multiplies section padding, grid gaps, card padding and the page gutter \u2014 ' +
+                'not type sizes, and not the navbar clearance.';
+        }
+    }
+
     /* ------------------------------------------------------------- draft I/O */
 
     var draftTimer = null;
@@ -582,6 +730,7 @@
               '<button class="tge-btn" data-act="closeimage">Close</button>' +
             '</span>' +
             '<span class="tge-spacer"></span>' +
+            '<button class="tge-btn" data-act="layout">Layout</button>' +
             '<button class="tge-btn" data-act="toggle">Review changes</button>' +
             '<button class="tge-btn tge-btn-danger" data-act="discard">Discard all</button>' +
             '<button class="tge-btn tge-btn-primary" data-act="publish">Publish…</button>';
@@ -593,6 +742,7 @@
         drawer.innerHTML = '<h2>Pending changes</h2><div data-role="list"></div>';
         document.body.appendChild(drawer);
 
+        buildPanel();
         ui.bar = bar;
         ui.drawer = drawer;
         ui.list = drawer.querySelector('[data-role="list"]');
@@ -624,7 +774,8 @@
             if (!act) return;
             if (act === 'undo') undo();
             else if (act === 'redo') redo();
-            else if (act === 'toggle') { drawer.hidden = !drawer.hidden; renderChanges(); }
+            else if (act === 'toggle') { drawer.hidden = !drawer.hidden; if (!drawer.hidden) ui.panel.hidden = true; renderChanges(); }
+            else if (act === 'layout') { ui.panel.hidden = !ui.panel.hidden; if (!ui.panel.hidden) { drawer.hidden = true; syncPanel(); } }
             else if (act === 'discard') { if (changes().length && confirm('Discard all pending changes?')) discardAll(); }
             else if (act === 'applylink') applyLink();
             else if (act === 'cancellink') closeLinkBar();
@@ -651,7 +802,10 @@
         }
         ui.list.innerHTML = list.map(function (c) {
             var vals;
-            if (c.rec.kind === 'image') {
+            if (c.rec.kind === 'token') {
+                vals = '<span class="tge-was">' + escapeHtml(c.before) + '</span>' +
+                       '<span class="tge-now">' + escapeHtml(c.after) + '</span>';
+            } else if (c.rec.kind === 'image') {
                 var meta = images.get(c.after);
                 vals = meta
                     ? '<span class="tge-was">' + escapeHtml(c.rec.originalSrc) + '</span>' +
@@ -722,7 +876,9 @@
     function init() {
         document.body.classList.add('tge-on');
         buildUI();
+        collectTokens();
         collect();
+        syncPanel();
 
         document.addEventListener('click', onClick, true);
         document.addEventListener('keydown', onKeydown, true);

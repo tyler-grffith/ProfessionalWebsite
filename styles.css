@@ -4,7 +4,13 @@
        --measure, because a readable line length is a much smaller number
        than a comfortable layout width. */
     --page-max: 1600px;
-    --gutter: clamp(1rem, 3vw, 2rem);
+    /* One multiplier behind every spacing decision, so the whole page's
+       rhythm can be tuned from a single control. 1 is the authored design.
+       Type sizes, the card media heights and --nav-clearance deliberately
+       stay out of it: the first two are not rhythm, and the third is a
+       measured guarantee that anchored headings clear the navbar. */
+    --space-scale: 1;
+    --gutter: calc(clamp(1rem, 3vw, 2rem) * var(--space-scale));
     /* 55ch renders ~67 characters in EB Garamond, since 1ch is the width of
        "0" and real text averages narrower. Measured, not assumed. */
     --measure: 55ch;
@@ -156,7 +162,7 @@ iframe {
     padding: 0 var(--gutter);
     display: flex;
     flex-wrap: wrap;
-    gap: clamp(2rem, 5vw, 4rem);
+    gap: calc(clamp(2rem, 5vw, 4rem) * var(--space-scale));
     align-items: center;
 }
 
@@ -262,7 +268,7 @@ iframe {
 
 /* Section Styles */
 section {
-    padding: clamp(3rem, 8vw, 5rem) 0;
+    padding: calc(clamp(3rem, 8vw, 5rem) * var(--space-scale)) 0;
     scroll-margin-top: var(--nav-clearance);
 }
 
@@ -270,7 +276,7 @@ section {
     text-align: center;
     font-size: clamp(1.8rem, 4vw, 2.5rem);
     font-weight: 700;
-    margin-bottom: clamp(1.5rem, 4vw, 3rem);
+    margin-bottom: calc(clamp(1.5rem, 4vw, 3rem) * var(--space-scale));
     color: #274e13;
     position: relative;
 }
@@ -291,14 +297,15 @@ section {
 .modules-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
-    gap: clamp(1.25rem, 3vw, 2rem);
+    gap: calc(clamp(1.25rem, 3vw, 2rem) * var(--space-scale));
     margin: 0 auto;
 }
 
 @media (min-width: 1040px) {
     .desmos-category {
         grid-column: 2 / span 2;
-    }}
+    }
+}
 
 .desmos-category .module-list {
     display: grid;
@@ -362,7 +369,7 @@ section {
 .projects-grid {
     display: flex;
     flex-direction: column;
-    gap: clamp(1.25rem, 3vw, 2rem);
+    gap: calc(clamp(1.25rem, 3vw, 2rem) * var(--space-scale));
     margin: 0 auto;
 }
 
@@ -419,7 +426,7 @@ section {
 }
 
 .project-content {
-    padding: clamp(1rem, 3vw, 2rem);
+    padding: calc(clamp(1rem, 3vw, 2rem) * var(--space-scale));
     flex: 1 0 22rem;
     min-width: 0;
     display: flex;
