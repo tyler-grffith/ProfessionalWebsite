@@ -9,8 +9,8 @@
  * indices line up; a saved draft additionally records the value it expected to
  * find, and is refused if the file has moved on underneath it.
  *
- * Phases 2-3 of the editor: text, links, images, undo/redo, drafts.
- * Layout tokens and publishing arrive in later phases.
+ * Text, links, images, layout tokens, undo/redo, drafts, and saving the
+ * result back out as a zip to drop over the checkout.
  */
 (function () {
     'use strict';
@@ -186,15 +186,16 @@
             var nodes = document.querySelectorAll(region.sel);
             Array.prototype.forEach.call(nodes, function (el, i) {
                 if (el.closest('.tge-bar, .tge-drawer')) return;
-                if (region.text) add(region.name + '[' + i + ']', el, 'text');
-                if (region.href) add(region.name + '[' + i + ']@href', el, 'href');
-                if (region.image) add(region.name + '[' + i + ']@image', el, 'image');
+                if (region.text) add(region.name + '[' + i + ']', el, 'text', region, i);
+                if (region.href) add(region.name + '[' + i + ']@href', el, 'href', region, i);
+                if (region.image) add(region.name + '[' + i + ']@image', el, 'image', region, i);
             });
         });
     }
 
-    function add(key, el, kind) {
-        var rec = { key: key, el: el, kind: kind, host: kind === 'text' ? textHost(el) : el };
+    function add(key, el, kind, region, index) {
+        var rec = { key: key, el: el, kind: kind, region: region, index: index,
+                    host: kind === 'text' ? textHost(el) : el };
         rec.original = kind === 'image' ? '' : getValue(rec);
         records.set(key, rec);
 
@@ -454,12 +455,30 @@
         });
     }
 
+    var EXT_FOR = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/svg+xml': '.svg',
+                    'image/webp': '.webp', 'image/gif': '.gif' };
+
+    /* Writing JPEG bytes to a path ending .png works only because browsers
+       sniff; a server sending X-Content-Type-Options: nosniff will refuse it.
+       So when the encoded type does not match the target's extension, the file
+       is written under a corrected name and the src is repointed. */
+    function targetName(originalSrc, blobType) {
+        var want = EXT_FOR[blobType];
+        if (!want) return originalSrc;
+        var dot = originalSrc.lastIndexOf('.');
+        var stem = dot === -1 ? originalSrc : originalSrc.slice(0, dot);
+        var have = dot === -1 ? '' : originalSrc.slice(dot).toLowerCase();
+        if (have === want || (want === '.jpg' && have === '.jpeg')) return originalSrc;
+        return stem + want;
+    }
+
     function replaceImage(rec, file) {
         return processImage(file).then(function (out) {
             var id = 'img' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
             var meta = {
                 blob: out.blob, name: file.name, width: out.width, height: out.height,
-                bytes: out.blob.size, wasBytes: file.size, target: rec.originalSrc, note: out.note
+                bytes: out.blob.size, wasBytes: file.size, note: out.note,
+                target: targetName(rec.originalSrc, out.blob.type)
             };
             stageBlob(id, meta);
             return dbPut(id, meta).catch(function () {}).then(function () {
@@ -706,6 +725,316 @@
         return Promise.resolve();
     }
 
+    /* --------------------------------------------------------------- publish */
+
+    /* Rewriting index.html by reparsing and reserialising it moves <head> onto
+       the <html> line and shifts every line after it, so a one-word edit would
+       arrive as a whole-file diff. Instead each edit is spliced into the raw
+       source at an anchored match, and the diff contains only what changed. */
+
+    function escapeRe(str) {
+        return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    /* Match the value allowing the source's own line breaks and indentation
+       wherever the rendered text had a single space. */
+    function looseValue(value) {
+        return escapeRe(value).replace(/ /g, '\\s+');
+    }
+
+    function replaceOnce(src, regex, build, label, problems) {
+        var matches = [];
+        var m;
+        regex.lastIndex = 0;
+        while ((m = regex.exec(src)) !== null) {
+            matches.push(m);
+            if (m.index === regex.lastIndex) regex.lastIndex++;
+        }
+        if (matches.length === 0) {
+            problems.push(label + ': could not find the original text in index.html');
+            return src;
+        }
+        if (matches.length > 1) {
+            /* Guessing which of several identical strings to rewrite is how an
+               editor silently corrupts a page. Refuse and say so. */
+            problems.push(label + ': the original text appears ' + matches.length +
+                          ' times, so it is ambiguous which one to change');
+            return src;
+        }
+        var hit = matches[0];
+        return src.slice(0, hit.index) + build(hit) + src.slice(hit.index + hit[0].length);
+    }
+
+    function applyEdit(src, rec, after, problems) {
+        var before = rec.original;
+        if (rec.kind === 'text') {
+            /* Anchored between tags so a word that also occurs inside an
+               attribute cannot match. */
+            var re = new RegExp('(>\\s*)' + looseValue(before) + '(\\s*<)', 'g');
+            return replaceOnce(src, re, function (m) { return m[1] + after + m[2]; }, rec.key, problems);
+        }
+        if (rec.kind === 'href' || rec.kind === 'src') {
+            var attr = rec.kind === 'href' ? 'href' : 'src';
+            var re2 = new RegExp('(' + attr + '=")' + escapeRe(before) + '(")', 'g');
+            return replaceOnce(src, re2, function (m) { return m[1] + after + m[2]; }, rec.key, problems);
+        }
+        return src;
+    }
+
+    /* A replaced image keeps its filename, so index.html only changes when the
+       <img> carried width/height - stale ones are an aspect-ratio hint that
+       makes the page jump before the new file loads. */
+    function applyImageTag(src, rec, meta, problems) {
+        if (!meta) return src;
+        var renamed = meta.target !== rec.originalSrc;
+        if (!rec.hasDims && !renamed) return src;
+        var needle = 'src="' + rec.originalSrc + '"';
+        var at = src.indexOf(needle);
+        if (at === -1) { problems.push(rec.key + ': could not find ' + rec.originalSrc + ' in index.html'); return src; }
+        if (src.indexOf(needle, at + 1) !== -1) {
+            problems.push(rec.key + ': ' + rec.originalSrc + ' is referenced more than once, so its dimensions are ambiguous');
+            return src;
+        }
+        var start = src.lastIndexOf('<', at);
+        var end = src.indexOf('>', at);
+        if (start === -1 || end === -1) return src;
+        var tag = src.slice(start, end);
+        if (rec.hasDims && meta.width) {
+            tag = tag.replace(/\bwidth="\d+"/, 'width="' + meta.width + '"')
+                     .replace(/\bheight="\d+"/, 'height="' + meta.height + '"');
+        }
+        if (renamed) tag = tag.replace('src="' + rec.originalSrc + '"', 'src="' + meta.target + '"');
+        return src.slice(0, start) + tag + src.slice(end);
+    }
+
+    /* Token values are rewritten in place inside the first :root block, so the
+       diff is one line per token and every comment around them survives. */
+    function applyTokens(css, tokenChanges, problems) {
+        var open = css.indexOf(':root');
+        var brace = css.indexOf('{', open);
+        var close = css.indexOf('}', brace);
+        if (open === -1 || close === -1) {
+            problems.push('could not find the :root block in styles.css');
+            return css;
+        }
+        var block = css.slice(brace, close);
+        tokenChanges.forEach(function (c) {
+            var re = new RegExp('(' + escapeRe(c.rec.prop) + '\\s*:\\s*)([^;]*)(;)');
+            if (!re.test(block)) {
+                problems.push(c.rec.prop + ': not declared in the :root block');
+                return;
+            }
+            block = block.replace(re, function (_, a, old, z) { return a + c.after + z; });
+        });
+        return css.slice(0, brace) + block + css.slice(close);
+    }
+
+    /* ---- a minimal store-only zip, so the editor pulls in no dependency ---- */
+
+    var CRC_TABLE = (function () {
+        var t = new Uint32Array(256);
+        for (var n = 0; n < 256; n++) {
+            var c = n;
+            for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+            t[n] = c >>> 0;
+        }
+        return t;
+    })();
+
+    function crc32(bytes) {
+        var c = 0xFFFFFFFF;
+        for (var i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+        return (c ^ 0xFFFFFFFF) >>> 0;
+    }
+
+    function zip(entries) {
+        var chunks = [], central = [], offset = 0;
+        var enc = new TextEncoder();
+        entries.forEach(function (entry) {
+            var nameBytes = enc.encode(entry.name);
+            var data = entry.bytes;
+            var sum = crc32(data);
+            var local = new DataView(new ArrayBuffer(30));
+            local.setUint32(0, 0x04034b50, true);
+            local.setUint16(4, 20, true);
+            local.setUint16(6, 0x0800, true);          // UTF-8 names
+            local.setUint16(8, 0, true);               // stored, no compression
+            local.setUint32(14, sum, true);
+            local.setUint32(18, data.length, true);
+            local.setUint32(22, data.length, true);
+            local.setUint16(26, nameBytes.length, true);
+            chunks.push(new Uint8Array(local.buffer), nameBytes, data);
+
+            var dir = new DataView(new ArrayBuffer(46));
+            dir.setUint32(0, 0x02014b50, true);
+            dir.setUint16(4, 20, true);
+            dir.setUint16(6, 20, true);
+            dir.setUint16(8, 0x0800, true);
+            dir.setUint16(10, 0, true);
+            dir.setUint32(16, sum, true);
+            dir.setUint32(20, data.length, true);
+            dir.setUint32(24, data.length, true);
+            dir.setUint16(28, nameBytes.length, true);
+            dir.setUint32(42, offset, true);
+            central.push(new Uint8Array(dir.buffer), nameBytes);
+            offset += 30 + nameBytes.length + data.length;
+        });
+        var centralSize = central.reduce(function (n, c) { return n + c.length; }, 0);
+        var end = new DataView(new ArrayBuffer(22));
+        end.setUint32(0, 0x06054b50, true);
+        end.setUint16(8, entries.length, true);
+        end.setUint16(10, entries.length, true);
+        end.setUint32(12, centralSize, true);
+        end.setUint32(16, offset, true);
+        return new Blob(chunks.concat(central, [new Uint8Array(end.buffer)]), { type: 'application/zip' });
+    }
+
+    function valueInDoc(pdoc, rec) {
+        var el = pdoc.querySelectorAll(rec.region.sel)[rec.index];
+        if (!el) return null;
+        if (rec.kind === 'text') return norm(textHost(el).textContent);
+        if (rec.kind === 'image') return el.getAttribute('src') || '';
+        return el.getAttribute(rec.kind) || '';
+    }
+
+    function buildBundle() {
+        var bust = '?publish' + Date.now();
+        return Promise.all([
+            fetch('index.html' + bust).then(function (r) { return r.text(); }),
+            fetch('styles.css' + bust).then(function (r) { return r.text(); })
+        ]).then(function (sources) {
+            var html = sources[0], css = sources[1];
+            var pdoc = new DOMParser().parseFromString(html, 'text/html');
+            var problems = [], entries = [], summary = [];
+            var list = changes();
+
+            /* The page was loaded at some earlier moment. If the file has moved
+               since - another tab, an editor, a git pull - the indices in these
+               keys no longer point at the same content, and publishing blind
+               would overwrite whatever happened in between. */
+            list.forEach(function (c) {
+                if (c.rec.kind === 'token') return;
+                var found = valueInDoc(pdoc, c.rec);
+                var expected = c.rec.kind === 'image' ? c.rec.originalSrc : c.rec.original;
+                if (found === null) problems.push(c.rec.key + ': no longer present in index.html');
+                else if (found !== expected) {
+                    problems.push(c.rec.key + ': index.html has changed since this page was loaded (found "' +
+                                  found.slice(0, 40) + '")');
+                }
+            });
+
+            if (problems.length) return { problems: problems };
+
+            var newHtml = html;
+            list.forEach(function (c) {
+                if (c.rec.kind === 'text' || c.rec.kind === 'href') {
+                    newHtml = applyEdit(newHtml, c.rec, c.after, problems);
+                    summary.push(c.rec.key + ': "' + c.before + '" → "' + c.after + '"');
+                } else if (c.rec.kind === 'image') {
+                    var meta = images.get(c.after);
+                    if (!meta) { problems.push(c.rec.key + ': the staged image is missing'); return; }
+                    newHtml = applyImageTag(newHtml, c.rec, meta, problems);
+                    summary.push(c.rec.key + ': ' + c.rec.originalSrc +
+                        (meta.target !== c.rec.originalSrc
+                            ? ' \u2192 ' + meta.target + ' (new file; the old one is now unused)'
+                            : ' replaced') +
+                        ' (' + bytes(meta.bytes) + ')');
+                }
+            });
+
+            var tokenChanges = list.filter(function (c) { return c.rec.kind === 'token'; });
+            var newCss = css;
+            if (tokenChanges.length) {
+                newCss = applyTokens(css, tokenChanges, problems);
+                tokenChanges.forEach(function (c) {
+                    summary.push(c.rec.prop + ': ' + c.before + ' → ' + c.after);
+                });
+            }
+
+            if (problems.length) return { problems: problems };
+
+            var enc = new TextEncoder();
+            if (newHtml !== html) entries.push({ name: 'index.html', bytes: enc.encode(newHtml) });
+            if (newCss !== css) entries.push({ name: 'styles.css', bytes: enc.encode(newCss) });
+
+            var imageJobs = list.filter(function (c) { return c.rec.kind === 'image' && images.get(c.after); })
+                .map(function (c) {
+                    var meta = images.get(c.after);
+                    return meta.blob.arrayBuffer().then(function (buf) {
+                        entries.push({ name: meta.target, bytes: new Uint8Array(buf) });
+                    });
+                });
+
+            return Promise.all(imageJobs).then(function () {
+                if (!entries.length) return { problems: ['nothing to publish: the files are already identical'] };
+                return { entries: entries, summary: summary, blob: zip(entries) };
+            });
+        });
+    }
+
+    function openPublish() {
+        flushPending();
+        if (!changes().length) { toast('Nothing to publish yet.'); return; }
+        ui.publish.disabled = true;
+        ui.publish.textContent = 'Checking…';
+        buildBundle().then(function (result) {
+            ui.publish.disabled = false;
+            ui.publish.textContent = 'Save to repo…';
+            if (result.problems) {
+                showConfirm(null, result.problems);
+            } else {
+                showConfirm(result, null);
+            }
+        }).catch(function (err) {
+            ui.publish.disabled = false;
+            ui.publish.textContent = 'Save to repo…';
+            showConfirm(null, ['unexpected failure: ' + err.message]);
+        });
+    }
+
+    function showConfirm(result, problems) {
+        var modal = document.createElement('div');
+        modal.className = 'tge-modal';
+        var body;
+        if (problems) {
+            body = '<h2>Cannot publish</h2><ul class="tge-problems">' +
+                problems.map(function (p) { return '<li>' + escapeHtml(p) + '</li>'; }).join('') +
+                '</ul><p class="tge-note">Nothing has been written. Reload the page to pick up the current ' +
+                'files, or undo the change this refers to.</p>' +
+                '<div class="tge-modal-actions"><button class="tge-btn" data-close>Close</button></div>';
+        } else {
+            var total = result.entries.reduce(function (n, e) { return n + e.bytes.length; }, 0);
+            body = '<h2>Save to repo</h2>' +
+                '<p class="tge-note">This downloads a zip. Unzip it over your ' +
+                '<code>tylergriffith.us</code> checkout, review with <code>git diff</code>, then commit and push ' +
+                'as usual. It does not touch GitHub or the live site.</p>' +
+                '<h3>Files (' + bytes(total) + ')</h3><ul class="tge-files">' +
+                result.entries.map(function (e) {
+                    return '<li><code>' + escapeHtml(e.name) + '</code> <span>' + bytes(e.bytes.length) + '</span></li>';
+                }).join('') + '</ul>' +
+                '<h3>Changes</h3><ul class="tge-files">' +
+                result.summary.map(function (l) { return '<li>' + escapeHtml(l) + '</li>'; }).join('') + '</ul>' +
+                '<div class="tge-modal-actions">' +
+                '<button class="tge-btn" data-close>Cancel</button>' +
+                '<button class="tge-btn tge-btn-primary" data-download>Download zip</button></div>';
+        }
+        modal.innerHTML = '<div class="tge-modal-card">' + body + '</div>';
+        document.body.appendChild(modal);
+        modal.addEventListener('click', function (e) {
+            if (e.target === modal || e.target.hasAttribute('data-close')) modal.remove();
+            if (e.target.hasAttribute('data-download')) {
+                var a = document.createElement('a');
+                a.href = URL.createObjectURL(result.blob);
+                a.download = 'tylergriffith-edits-' + new Date().toISOString().slice(0, 10) + '.zip';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+                modal.remove();
+                toast('Zip downloaded. Unzip over your checkout, then git diff before committing.', 8000);
+            }
+        });
+    }
+
     /* ------------------------------------------------------------------- UI */
 
     function buildUI() {
@@ -733,7 +1062,7 @@
             '<button class="tge-btn" data-act="layout">Layout</button>' +
             '<button class="tge-btn" data-act="toggle">Review changes</button>' +
             '<button class="tge-btn tge-btn-danger" data-act="discard">Discard all</button>' +
-            '<button class="tge-btn tge-btn-primary" data-act="publish">Publish…</button>';
+            '<button class="tge-btn tge-btn-primary" data-act="publish">Save to repo…</button>';
         document.body.appendChild(bar);
 
         var drawer = document.createElement('div');
@@ -782,9 +1111,7 @@
             else if (act === 'pickimage') ui.file.click();
             else if (act === 'revertimage') revertImage();
             else if (act === 'closeimage') closeImageBar();
-            else if (act === 'publish') {
-                toast('Publishing arrives in a later phase. Your changes are saved locally and survive a reload.', 6000);
-            }
+            else if (act === 'publish') openPublish();
         });
 
         ui.linkInput.addEventListener('keydown', function (e) {
