@@ -350,6 +350,98 @@ body.tge-on [data-tge-imageable]:hover {
     }
 }
 
+/* --- box resizing --------------------------------------------------------- */
+
+body.tge-resize [data-tge-editable] {
+    outline: none;
+    cursor: default;
+    background: none;
+}
+
+body.tge-resize [data-tge-imageable],
+body.tge-resize [data-tge-linkable] {
+    outline: none;
+    cursor: default;
+}
+
+.tge-btn-active {
+    background: var(--tge-accent);
+    border-color: var(--tge-accent);
+    color: #2a1a0c;
+    font-weight: 700;
+}
+
+/* Every resizable box is outlined while in resize mode, so you can see what
+   can be grabbed before grabbing it. */
+body.tge-resize .project-image,
+body.tge-resize .project-image-right,
+body.tge-resize .project-content,
+body.tge-resize .hero-content,
+body.tge-resize .hero-image,
+body.tge-resize .hero-embed {
+    outline: 1px dashed rgba(229, 172, 119, 0.5);
+    outline-offset: -1px;
+    cursor: pointer;
+}
+
+.tge-handles {
+    position: fixed;
+    z-index: 2147483050;
+    pointer-events: none;
+    outline: 2px solid var(--tge-accent);
+    outline-offset: 0;
+}
+
+.tge-handle {
+    position: absolute;
+    background: var(--tge-accent);
+    border: 2px solid #2a1a0c;
+    border-radius: 3px;
+    pointer-events: auto;
+    touch-action: none;
+}
+
+.tge-handle-x {
+    width: 12px;
+    height: 46px;
+    right: -7px;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: ew-resize;
+}
+
+.tge-handle-y {
+    width: 46px;
+    height: 12px;
+    bottom: -7px;
+    left: 50%;
+    transform: translateX(-50%);
+    cursor: ns-resize;
+}
+
+.tge-handle[hidden] {
+    display: none;
+}
+
+.tge-resizebar[hidden] {
+    display: none;
+}
+
+.tge-resizebar {
+    display: flex;
+    flex: 1 1 100%;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    flex-wrap: wrap;
+}
+
+.tge-resizebar label {
+    color: var(--tge-accent);
+    font-weight: 700;
+    white-space: nowrap;
+}
+
 /* --- publish modal -------------------------------------------------------- */
 
 .tge-modal {

@@ -10,6 +10,10 @@
        stay out of it: the first two are not rhythm, and the third is a
        measured guarantee that anchored headings clear the navbar. */
     --space-scale: 1;
+    /* Card media height, and the per-box multiplier dev mode writes against
+       it. Scaling keeps the clamp responsive; a dragged pixel height would
+       not be. */
+    --card-media-h: clamp(180px, 20vw, 300px);
     --gutter: calc(clamp(1rem, 3vw, 2rem) * var(--space-scale));
     /* 55ch renders ~67 characters in EB Garamond, since 1ch is the width of
        "0" and real text averages narrower. Measured, not assumed. */
@@ -394,7 +398,7 @@ section {
 .project-image {
     flex: 0 3 200px;
     min-width: 0;
-    height: clamp(180px, 20vw, 300px);
+    height: calc(var(--card-media-h) * var(--media-scale, 1));
     background: transparent;
     display: flex;
     align-items: center;
@@ -406,7 +410,7 @@ section {
 .project-image-right {
     flex: 0 3 375px;
     min-width: 0;
-    height: clamp(180px, 20vw, 300px);
+    height: calc(var(--card-media-h) * var(--media-scale, 1));
     background: transparent;
     display: flex;
     align-items: center;
@@ -416,13 +420,19 @@ section {
 }
 
 /* The Deimos card's media is deliberately larger. Expressed as a basis so
-   it is a starting preference, not a floor that crushes the text. */
-.project-card:nth-child(2) .project-image {
-    flex-basis: 250px;
-}
+   it is a starting preference, not a floor that crushes the text.
 
-.project-card:nth-child(2) .project-image-right {
-    flex-basis: 500px;
+   Scoped to the side-by-side layout on purpose: once the card stacks, the
+   flex main axis is vertical and a basis means HEIGHT, so at (0,3,0) these
+   outranked the mobile reset and made the video box 500px tall on a phone. */
+@media (min-width: 769px) {
+    .project-card:nth-child(2) .project-image {
+        flex-basis: 250px;
+    }
+
+    .project-card:nth-child(2) .project-image-right {
+        flex-basis: 500px;
+    }
 }
 
 .project-content {

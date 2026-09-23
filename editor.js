@@ -118,11 +118,17 @@
        while previewing it holds a blob: URL that means nothing to the repo. */
     function getValue(rec) {
         if (rec.kind === 'text') return norm(rec.host.textContent);
-        if (rec.kind === 'image' || rec.kind === 'token') return rec.value || '';
+        if (rec.kind === 'image' || rec.kind === 'token' || rec.kind === 'box') return rec.value || '';
         return rec.el.getAttribute(rec.kind) || '';
     }
 
     function setValue(rec, value) {
+        if (rec.kind === 'box') {
+            rec.value = value;
+            applyBox(rec, value);
+            if (activeBox) { positionHandles(); syncResizeBar(); }
+            return;
+        }
         if (rec.kind === 'token') {
             rec.value = value;
             if (value === rec.original) rec.el.style.removeProperty(rec.prop);
@@ -725,6 +731,214 @@
         return Promise.resolve();
     }
 
+    /* ----------------------------------------------------------- box resizing */
+
+    /* Dragging a box must not write a pixel width. Every one of these is sized
+       by flex weight or a clamp, and pinning a number would undo exactly what
+       the responsive work removed: a size that is right at one window width
+       and wrong at all the others. So each axis edits the responsive property
+       behind that edge - the box's share of its row, its height multiplier, or
+       its aspect ratio. */
+    var RESIZABLE = [
+        { sel: '.project-image',       label: 'card media (left)',  x: 'basis', y: 'mediaScale' },
+        { sel: '.project-content',     label: 'card text',          x: 'basis' },
+        { sel: '.project-image-right', label: 'card media (right)', x: 'basis', y: 'mediaScale' },
+        { sel: '.hero-content',        label: 'hero text column',   x: 'basis' },
+        { sel: '.hero-image',          label: 'hero media column',  x: 'basis' },
+        /* The embed fills its column, so widening it is really widening the
+           column; its own height is governed by aspect-ratio. */
+        { sel: '.hero-embed',          label: 'Desmos embed',       x: 'basis', xVia: '.hero-image', y: 'aspect' }
+    ];
+
+    var AXIS_PROP = { basis: 'flex-basis', mediaScale: '--media-scale', aspect: 'aspect-ratio' };
+
+    var resizeMode = false;
+    var activeBox = null;
+    var drag = null;
+
+    /* A selector specific to this one element, since resizing one project card
+       must not move its twin. Walks up to the nearest id, which keeps it short
+       and stable. */
+    function cssPathFor(el) {
+        var parts = [];
+        var cur = el;
+        while (cur && cur.nodeType === 1 && cur !== document.body) {
+            if (cur.id) { parts.unshift('#' + cur.id); break; }
+            var parent = cur.parentElement;
+            if (!parent) break;
+            var cls = (typeof cur.className === 'string' && cur.className.trim())
+                ? '.' + cur.className.trim().split(/\s+/)[0] : cur.tagName.toLowerCase();
+            var sameTag = Array.prototype.filter.call(parent.children, function (c) {
+                return c.tagName === cur.tagName;
+            });
+            if (sameTag.length > 1) {
+                cls += ':nth-of-type(' + (sameTag.indexOf(cur) + 1) + ')';
+            }
+            parts.unshift(cls);
+            cur = parent;
+        }
+        return parts.join(' > ').replace(/ > /g, ' > ');
+    }
+
+    function boxKey(selector, axis) { return 'box[' + selector + ']@' + axis; }
+
+    function collectBoxes() {
+        RESIZABLE.forEach(function (spec) {
+            Array.prototype.forEach.call(document.querySelectorAll(spec.sel), function (el) {
+                ['x', 'y'].forEach(function (dim) {
+                    var axis = spec[dim];
+                    if (!axis) return;
+                    var target = (dim === 'x' && spec.xVia) ? el.closest('*').ownerDocument.querySelector(spec.xVia) : el;
+                    if (!target) return;
+                    var selector = cssPathFor(target);
+                    var key = boxKey(selector, axis);
+                    if (records.has(key)) return;   // embed shares the column's basis
+                    var cs = getComputedStyle(target);
+                    var original;
+                    if (axis === 'basis') original = cs.flexBasis;
+                    else if (axis === 'mediaScale') original = (cs.getPropertyValue('--media-scale').trim() || '1');
+                    else original = cs.aspectRatio.replace(/\s/g, '') || 'auto';
+                    records.set(key, {
+                        key: key, kind: 'box', axis: axis, el: target, selector: selector,
+                        spec: spec, original: original, value: original
+                    });
+                });
+            });
+        });
+    }
+
+    function applyBox(rec, value) {
+        var prop = AXIS_PROP[rec.axis];
+        if (value === rec.original) rec.el.style.removeProperty(prop);
+        else rec.el.style.setProperty(prop, value);
+    }
+
+    function boxRecordFor(el, axis) {
+        var spec = null;
+        RESIZABLE.some(function (s) { if (el.matches(s.sel)) { spec = s; return true; } return false; });
+        if (!spec) return null;
+        var target = (axis === 'basis' && spec.xVia) ? document.querySelector(spec.xVia) : el;
+        if (!target) return null;
+        return records.get(boxKey(cssPathFor(target), axis)) || null;
+    }
+
+    function setResizeMode(on) {
+        resizeMode = on;
+        document.body.classList.toggle('tge-resize', on);
+        /* Text editing and box dragging would fight over the same clicks. */
+        records.forEach(function (rec) {
+            if (rec.kind === 'text') rec.host.contentEditable = on ? 'false' : 'plaintext-only';
+        });
+        if (!on) selectBox(null);
+        ui.resizeBtn.classList.toggle('tge-btn-active', on);
+        positionHandles();
+    }
+
+    function selectBox(el) {
+        activeBox = el;
+        if (!el) { ui.handles.hidden = true; ui.resizebar.hidden = true; return; }
+        var spec = null;
+        RESIZABLE.some(function (s) { if (el.matches(s.sel)) { spec = s; return true; } return false; });
+        ui.handles.hidden = false;
+        ui.handles.querySelector('[data-h="x"]').hidden = !spec.x;
+        ui.handles.querySelector('[data-h="y"]').hidden = !spec.y;
+        ui.resizebar.hidden = false;
+        ui.resizeLabel.textContent = spec.label;
+        positionHandles();
+        syncResizeBar();
+    }
+
+    function positionHandles() {
+        if (!activeBox || !resizeMode) { if (ui.handles) ui.handles.hidden = true; return; }
+        var b = activeBox.getBoundingClientRect();
+        var box = ui.handles;
+        box.hidden = false;
+        box.style.left = b.left + 'px';
+        box.style.top = b.top + 'px';
+        box.style.width = b.width + 'px';
+        box.style.height = b.height + 'px';
+    }
+
+    function syncResizeBar() {
+        if (!activeBox || ui.resizebar.hidden) return;
+        var parts = [];
+        ['basis', 'mediaScale', 'aspect'].forEach(function (axis) {
+            var rec = boxRecordFor(activeBox, axis);
+            if (!rec) return;
+            var label = axis === 'basis' ? 'row share' : axis === 'mediaScale' ? 'height' : 'aspect';
+            var shown = axis === 'mediaScale' ? parseFloat(rec.value).toFixed(2) + '×' : rec.value;
+            parts.push(label + ' ' + shown + (rec.value !== rec.original ? ' *' : ''));
+        });
+        ui.resizeInfo.textContent = parts.join('   |   ');
+    }
+
+    function onHandleDown(e) {
+        var which = e.target.getAttribute('data-h');
+        if (!which || !activeBox) return;
+        e.preventDefault();
+        e.stopPropagation();
+        var spec = null;
+        RESIZABLE.some(function (s) { if (activeBox.matches(s.sel)) { spec = s; return true; } return false; });
+        var axis = which === 'x' ? spec.x : spec.y;
+        var rec = boxRecordFor(activeBox, axis);
+        if (!rec) return;
+        var b = activeBox.getBoundingClientRect();
+        drag = {
+            rec: rec, axis: axis, which: which,
+            startX: e.clientX, startY: e.clientY,
+            startW: b.width, startH: b.height,
+            /* The unscaled height, captured once. Recomputing it from the
+               live value each pointermove feeds the scale back into its own
+               input and the box accelerates away under the cursor. */
+            baseH: b.height / (parseFloat(rec.value) || 1),
+            before: rec.value
+        };
+        e.target.setPointerCapture(e.pointerId);
+    }
+
+    function onHandleMove(e) {
+        if (!drag) return;
+        var rec = drag.rec;
+        var value;
+        if (drag.axis === 'basis') {
+            value = Math.max(80, Math.round(drag.startW + (e.clientX - drag.startX))) + 'px';
+        } else if (drag.axis === 'mediaScale') {
+            var h = Math.max(60, drag.startH + (e.clientY - drag.startY));
+            value = (h / drag.baseH).toFixed(3);
+        } else {
+            var w = drag.startW;
+            var nh = Math.max(60, drag.startH + (e.clientY - drag.startY));
+            value = (w / nh).toFixed(3);
+        }
+        rec.value = value;
+        applyBox(rec, value);
+        positionHandles();
+        syncResizeBar();
+    }
+
+    function onHandleUp() {
+        if (!drag) return;
+        var rec = drag.rec;
+        if (rec.value !== drag.before) { record(rec.key, drag.before, rec.value); saveDraft(); }
+        drag = null;
+        syncResizeBar();
+    }
+
+    function resetBox() {
+        if (!activeBox) return;
+        ['basis', 'mediaScale', 'aspect'].forEach(function (axis) {
+            var rec = boxRecordFor(activeBox, axis);
+            if (!rec || rec.value === rec.original) return;
+            var before = rec.value;
+            rec.value = rec.original;
+            applyBox(rec, rec.original);
+            record(rec.key, before, rec.original);
+        });
+        saveDraft();
+        positionHandles();
+        syncResizeBar();
+    }
+
     /* --------------------------------------------------------------- publish */
 
     /* Rewriting index.html by reparsing and reserialising it moves <head> onto
@@ -805,6 +1019,39 @@
         }
         if (renamed) tag = tag.replace('src="' + rec.originalSrc + '"', 'src="' + meta.target + '"');
         return src.slice(0, start) + tag + src.slice(end);
+    }
+
+    var BLOCK_START = '/* === dev mode: per-box sizes (managed, do not edit by hand) === */';
+    var BLOCK_END = '/* === end dev mode === */';
+
+    /* Per-box rules have no existing declaration to rewrite, so they live in
+       one block the editor owns and replaces wholesale. It is scoped to the
+       side-by-side layout: below 769px these boxes stack full width, and a
+       more specific basis or height would override that and break the phone. */
+    function applyBoxRules(css, boxChanges) {
+        var byselector = {};
+        boxChanges.forEach(function (c) {
+            var sel = c.rec.selector;
+            (byselector[sel] = byselector[sel] || []).push(
+                AXIS_PROP[c.rec.axis] + ': ' + c.after + ';');
+        });
+        var names = Object.keys(byselector);
+        var block = '';
+        if (names.length) {
+            block = BLOCK_START + '\n@media (min-width: 769px) {\n' + names.map(function (sel) {
+                return '    ' + sel + ' {\n        ' + byselector[sel].join('\n        ') + '\n    }';
+            }).join('\n\n') + '\n}\n' + BLOCK_END + '\n';
+        }
+        var from = css.indexOf(BLOCK_START);
+        if (from !== -1) {
+            var to = css.indexOf(BLOCK_END, from);
+            if (to !== -1) {
+                var tail = css.slice(to + BLOCK_END.length).replace(/^\n/, '');
+                return css.slice(0, from) + block + tail;
+            }
+        }
+        if (!block) return css;
+        return css.replace(/\s*$/, '\n\n') + block;
     }
 
     /* Token values are rewritten in place inside the first :root block, so the
@@ -913,7 +1160,9 @@
                keys no longer point at the same content, and publishing blind
                would overwrite whatever happened in between. */
             list.forEach(function (c) {
-                if (c.rec.kind === 'token') return;
+                /* Tokens and box sizes live in styles.css, not in the markup,
+                   so there is no element in index.html to re-resolve. */
+                if (c.rec.kind === 'token' || c.rec.kind === 'box') return;
                 var found = valueInDoc(pdoc, c.rec);
                 var expected = c.rec.kind === 'image' ? c.rec.originalSrc : c.rec.original;
                 if (found === null) problems.push(c.rec.key + ': no longer present in index.html');
@@ -945,9 +1194,17 @@
             var tokenChanges = list.filter(function (c) { return c.rec.kind === 'token'; });
             var newCss = css;
             if (tokenChanges.length) {
-                newCss = applyTokens(css, tokenChanges, problems);
+                newCss = applyTokens(newCss, tokenChanges, problems);
                 tokenChanges.forEach(function (c) {
                     summary.push(c.rec.prop + ': ' + c.before + ' → ' + c.after);
+                });
+            }
+
+            var boxChanges = list.filter(function (c) { return c.rec.kind === 'box'; });
+            if (boxChanges.length || newCss.indexOf(BLOCK_START) !== -1) {
+                newCss = applyBoxRules(newCss, boxChanges);
+                boxChanges.forEach(function (c) {
+                    summary.push(c.rec.spec.label + ' (' + c.rec.axis + '): ' + c.before + ' → ' + c.after);
                 });
             }
 
@@ -1051,6 +1308,11 @@
               '<button class="tge-btn" data-act="applylink">Apply</button>' +
               '<button class="tge-btn" data-act="cancellink">Cancel</button>' +
             '</span>' +
+            '<span class="tge-resizebar" hidden>' +
+              '<label data-role="resizelabel"></label>' +
+              '<span class="tge-imageinfo" data-role="resizeinfo"></span>' +
+              '<button class="tge-btn" data-act="resetbox">Reset box</button>' +
+            '</span>' +
             '<span class="tge-imagebar" hidden>' +
               '<label data-role="imagelabel"></label>' +
               '<button class="tge-btn" data-act="pickimage">Choose image\u2026</button>' +
@@ -1059,6 +1321,7 @@
               '<button class="tge-btn" data-act="closeimage">Close</button>' +
             '</span>' +
             '<span class="tge-spacer"></span>' +
+            '<button class="tge-btn" data-act="resize">Resize boxes</button>' +
             '<button class="tge-btn" data-act="layout">Layout</button>' +
             '<button class="tge-btn" data-act="toggle">Review changes</button>' +
             '<button class="tge-btn tge-btn-danger" data-act="discard">Discard all</button>' +
@@ -1083,6 +1346,24 @@
         ui.linkbar = bar.querySelector('.tge-linkbar');
         ui.linkLabel = bar.querySelector('[data-role="linklabel"]');
         ui.linkInput = bar.querySelector('[data-role="linkinput"]');
+        ui.resizeBtn = bar.querySelector('[data-act="resize"]');
+        ui.resizebar = bar.querySelector('.tge-resizebar');
+        ui.resizeLabel = bar.querySelector('[data-role="resizelabel"]');
+        ui.resizeInfo = bar.querySelector('[data-role="resizeinfo"]');
+
+        ui.handles = document.createElement('div');
+        ui.handles.className = 'tge-handles';
+        ui.handles.hidden = true;
+        ui.handles.innerHTML = '<span class="tge-handle tge-handle-x" data-h="x" title="Drag to change this box\u2019s share of the row"></span>' +
+                               '<span class="tge-handle tge-handle-y" data-h="y" title="Drag to change height"></span>';
+        document.body.appendChild(ui.handles);
+        ui.handles.addEventListener('pointerdown', onHandleDown);
+        ui.handles.addEventListener('pointermove', onHandleMove);
+        ui.handles.addEventListener('pointerup', onHandleUp);
+        ui.handles.addEventListener('pointercancel', onHandleUp);
+        window.addEventListener('scroll', positionHandles, true);
+        window.addEventListener('resize', positionHandles);
+
         ui.imagebar = bar.querySelector('.tge-imagebar');
         ui.imageLabel = bar.querySelector('[data-role="imagelabel"]');
         ui.imageInfo = bar.querySelector('[data-role="imageinfo"]');
@@ -1108,6 +1389,8 @@
             else if (act === 'discard') { if (changes().length && confirm('Discard all pending changes?')) discardAll(); }
             else if (act === 'applylink') applyLink();
             else if (act === 'cancellink') closeLinkBar();
+            else if (act === 'resize') setResizeMode(!resizeMode);
+            else if (act === 'resetbox') resetBox();
             else if (act === 'pickimage') ui.file.click();
             else if (act === 'revertimage') revertImage();
             else if (act === 'closeimage') closeImageBar();
@@ -1129,7 +1412,10 @@
         }
         ui.list.innerHTML = list.map(function (c) {
             var vals;
-            if (c.rec.kind === 'token') {
+            if (c.rec.kind === 'box') {
+                vals = '<span class="tge-was">' + escapeHtml(c.rec.spec.label + ' — ' + c.rec.axis + ': ' + c.before) + '</span>' +
+                       '<span class="tge-now">' + escapeHtml(c.after) + '</span>';
+            } else if (c.rec.kind === 'token') {
                 vals = '<span class="tge-was">' + escapeHtml(c.before) + '</span>' +
                        '<span class="tge-now">' + escapeHtml(c.after) + '</span>';
             } else if (c.rec.kind === 'image') {
@@ -1164,7 +1450,20 @@
     /* --------------------------------------------------------------- wiring */
 
     function onClick(e) {
-        if (e.target.closest('.tge-bar, .tge-drawer, .tge-toast')) return;
+        if (e.target.closest('.tge-bar, .tge-drawer, .tge-toast, .tge-panel, .tge-modal, .tge-handles')) return;
+
+        if (resizeMode) {
+            e.preventDefault();
+            e.stopPropagation();
+            var hit = null;
+            RESIZABLE.some(function (spec) {
+                var el = e.target.closest(spec.sel);
+                if (el) { hit = el; return true; }
+                return false;
+            });
+            selectBox(hit);
+            return;
+        }
 
         /* Links must not navigate while editing. */
         var anchor = e.target.closest('a');
@@ -1205,6 +1504,7 @@
         buildUI();
         collectTokens();
         collect();
+        collectBoxes();
         syncPanel();
 
         document.addEventListener('click', onClick, true);
