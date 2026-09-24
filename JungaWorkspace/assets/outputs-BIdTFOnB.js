@@ -23,7 +23,51 @@ export type CodeRunOutput = OutputBase & {
   type: 'code-run'
   source: { kind: 'project-files'; version: 1; entry: string }
 }
-export type Output = SceneOutput | CodeRunOutput
+/** The project's canvas pages, presented read-only with keyboard navigation. */
+export type CanvasShowOutput = OutputBase & {
+  type: 'canvas-show'
+  source: { kind: 'canvas-pages'; version: 1; startPage: string; loop: boolean }
+}
+/** The project's document, presented read-only as a reading page. */
+export type DocumentReadOutput = OutputBase & {
+  type: 'document-read'
+  source: { kind: 'document'; version: 1; showOutline: boolean }
+}
+/** The project's collections, browsed read-only from a starting collection. */
+export type CollectionBrowseOutput = OutputBase & {
+  type: 'collection-browse'
+  source: { kind: 'collections'; version: 1; startId: string }
+}
+/** The project's 3D model, shown read-only in the modeler viewport. */
+export type ModelerViewOutput = OutputBase & {
+  type: 'modeler-view'
+  source: { kind: 'model'; version: 1 }
+}
+/** The project's print plate, shown read-only in the slicer viewport. */
+export type SlicerViewOutput = OutputBase & {
+  type: 'slicer-view'
+  source: { kind: 'plate'; version: 1 }
+}
+/** The project's filament painting with its swap plan, shown read-only. */
+export type PainterViewOutput = OutputBase & {
+  type: 'painter-view'
+  source: { kind: 'painting'; version: 1 }
+}
+export type Output =
+  | SceneOutput
+  | CodeRunOutput
+  | CanvasShowOutput
+  | DocumentReadOutput
+  | CollectionBrowseOutput
+  | ModelerViewOutput
+  | SlicerViewOutput
+  | PainterViewOutput
+export const isCollectionBrowse = (output: Output): output is CollectionBrowseOutput =>
+  output.type === 'collection-browse'
+export const isDocumentRead = (output: Output): output is DocumentReadOutput =>
+  output.type === 'document-read'
+export const isCanvasShow = (output: Output): output is CanvasShowOutput =>
+  output.type === 'canvas-show'
 export const isCodeRun = (output: Output): output is CodeRunOutput => output.type === 'code-run'
 export type SourceManifest = { kind: 'cosmic-clock'; version: 1 }
 export const MIN_SCENE_DATE = Date.UTC(1970, 0, 1)
@@ -85,6 +129,36 @@ export function validOutput(value: unknown): value is Output {
     text(metadata.attribution, 4000) &&
     safeSourceUrl(metadata.sourceUrl)
   if (!shared || !record(source)) return false
+  if (value.type === 'modeler-view')
+    return keys(source, ['kind', 'version']) && source.kind === 'model' && source.version === 1
+  if (value.type === 'slicer-view')
+    return keys(source, ['kind', 'version']) && source.kind === 'plate' && source.version === 1
+  if (value.type === 'painter-view')
+    return keys(source, ['kind', 'version']) && source.kind === 'painting' && source.version === 1
+  if (value.type === 'collection-browse')
+    return (
+      keys(source, ['kind', 'version', 'startId']) &&
+      source.kind === 'collections' &&
+      source.version === 1 &&
+      typeof source.startId === 'string' &&
+      /^[A-Za-z0-9_-]{0,40}$/.test(source.startId)
+    )
+  if (value.type === 'document-read')
+    return (
+      keys(source, ['kind', 'version', 'showOutline']) &&
+      source.kind === 'document' &&
+      source.version === 1 &&
+      typeof source.showOutline === 'boolean'
+    )
+  if (value.type === 'canvas-show')
+    return (
+      keys(source, ['kind', 'version', 'startPage', 'loop']) &&
+      source.kind === 'canvas-pages' &&
+      source.version === 1 &&
+      typeof source.startPage === 'string' &&
+      /^[A-Za-z0-9_-]{0,40}$/.test(source.startPage) &&
+      typeof source.loop === 'boolean'
+    )
   if (value.type === 'code-run')
     return (
       keys(source, ['kind', 'version', 'entry']) &&
@@ -138,6 +212,79 @@ export function earthClockOutput(): SceneOutput {
         'NASA Blue Marble and Black Marble imagery. Timezone Boundary Builder 2026d, © OpenStreetMap contributors, ODbL 1.0. p5.js (LGPL-2.1), Astronomy Engine (MIT), DM fonts and Instrument Serif (OFL).',
       sourceUrl: 'https://www.figma.com/design/RYHxY6TlREXHVtGa6GwZSa/Clock-Mockup',
     },
+  }
+}
+
+export function modelerViewOutput(title = 'Model'): ModelerViewOutput {
+  return {
+    id: crypto.randomUUID(),
+    type: 'modeler-view',
+    title,
+    description: 'Shows this project\\u2019s model read-only.',
+    status: 'draft',
+    source: { kind: 'model', version: 1 },
+    metadata: { attribution: '', sourceUrl: '' },
+  }
+}
+export function painterViewOutput(title = 'Print sheet'): PainterViewOutput {
+  return {
+    id: crypto.randomUUID(),
+    type: 'painter-view',
+    title,
+    description: 'Shows this project\\u2019s filament painting and swap plan read-only.',
+    status: 'draft',
+    source: { kind: 'painting', version: 1 },
+    metadata: { attribution: '', sourceUrl: '' },
+  }
+}
+export function slicerViewOutput(title = 'Print plate'): SlicerViewOutput {
+  return {
+    id: crypto.randomUUID(),
+    type: 'slicer-view',
+    title,
+    description: 'Shows this project\\u2019s print plate read-only.',
+    status: 'draft',
+    source: { kind: 'plate', version: 1 },
+    metadata: { attribution: '', sourceUrl: '' },
+  }
+}
+
+/** A new output that presents the project's collections as a browsing page. */
+export function collectionBrowseOutput(title = 'Collections'): CollectionBrowseOutput {
+  return {
+    id: crypto.randomUUID(),
+    type: 'collection-browse',
+    title,
+    description: 'Presents this project\\u2019s collections to browse.',
+    status: 'draft',
+    source: { kind: 'collections', version: 1, startId: '' },
+    metadata: { attribution: '', sourceUrl: '' },
+  }
+}
+
+/** A new output that presents the project's document as a reading page. */
+export function documentReadOutput(title = 'Document'): DocumentReadOutput {
+  return {
+    id: crypto.randomUUID(),
+    type: 'document-read',
+    title,
+    description: 'Presents this project\\u2019s document as a reading page.',
+    status: 'draft',
+    source: { kind: 'document', version: 1, showOutline: true },
+    metadata: { attribution: '', sourceUrl: '' },
+  }
+}
+
+/** A new output that presents the project's canvas pages from the first page. */
+export function canvasShowOutput(title = 'Presentation'): CanvasShowOutput {
+  return {
+    id: crypto.randomUUID(),
+    type: 'canvas-show',
+    title,
+    description: 'Presents this project\\u2019s canvas pages full screen.',
+    status: 'draft',
+    source: { kind: 'canvas-pages', version: 1, startPage: '', loop: false },
+    metadata: { attribution: '', sourceUrl: '' },
   }
 }
 
